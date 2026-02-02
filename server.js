@@ -19,6 +19,9 @@ import { RESPONSES } from "./conversation/responses.js";
 import { RULES } from "./conversation/rules.js";
 import { planFromText } from "./planner/planner.js";
 import { buildCampaign } from "./planner/campaignBuilder.js"; 
+import { loadFromText } from "./knowledge/textSource.js";
+import { loadFromUrl } from "./knowledge/urlSource.js";
+import { loadFromFile } from "./knowledge/fileSource.js";
 
 dotenv.config();
 
@@ -666,6 +669,39 @@ app.post("/internal/campaign/preview", async (req, res) => {
     res.status(500).json({ error: "planner_failed" });
   }
 });
+
+// TXT/URL/PDF
+
+app.post("/internal/campaign/from-source", async (req, res) => {
+  try {
+    const { type, payload } = req.body;
+
+    let text;
+
+    if (type === "text") {
+      text = await loadFromText(payload.text);
+    } else if (type === "url") {
+      text = await loadFromUrl(payload.url);
+    } else if (type === "file") {
+      text = await loadFromFile(payload);
+    } else {
+      return res.status(400).json({ error: "invalid source type" });
+    }
+
+    const campaign = await planFromText(text);
+
+    res.json({
+      success: true,
+      sourceType: type,
+      campaign
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 
 /* ======================
