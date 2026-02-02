@@ -17,6 +17,8 @@ import { google } from "googleapis";
 import { STATES } from "./conversation/states.js";
 import { RESPONSES } from "./conversation/responses.js";
 import { RULES } from "./conversation/rules.js";
+import { planFromText } from "./planner/planner.js";
+import { buildCampaign } from "./planner/campaignBuilder.js"; 
 
 dotenv.config();
 
@@ -642,18 +644,26 @@ app.get("/health", (req, res) => {
     time: new Date().toISOString()
   });
 });
-import { planFromText } from "./planner/planner.js";
+
+
+// planner test 👈 ADD HERE
 
 app.post("/planner/test", (req, res) => {
   const { text } = req.body;
-
   if (!text) {
     return res.status(400).json({ error: "text is required" });
   }
 
   const plan = planFromText(text);
-  res.json(plan);
+  const campaign = buildCampaign(plan);
+
+  res.json({
+    plan,
+    campaign
+  });
 });
+
+
 
 
 /* ======================
