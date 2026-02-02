@@ -648,23 +648,6 @@ app.get("/health", (req, res) => {
 
 // planner test 👈 ADD HERE
 
-app.post("/planner/test", (req, res) => {
-  const { text } = req.body;
-  if (!text) {
-    return res.status(400).json({ error: "text is required" });
-  }
-
-  const plan = planFromText(text);
-  const campaign = buildCampaign(plan);
-
-  res.json({
-    plan,
-    campaign
-  });
-});
-
-
-
 
 /* ======================
    START
