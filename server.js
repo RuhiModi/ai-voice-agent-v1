@@ -631,12 +631,28 @@ app.post("/call-status", async (req, res) => {
   res.sendStatus(200);
 });
 
+/* ======================
+   HEALTH CHECK
+====================== */
+
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     service: "ai-voice-agent-v1",
     time: new Date().toISOString()
   });
+});
+import { planFromText } from "./planner/planner.js";
+
+app.post("/planner/test", (req, res) => {
+  const { text } = req.body;
+
+  if (!text) {
+    return res.status(400).json({ error: "text is required" });
+  }
+
+  const plan = planFromText(text);
+  res.json(plan);
 });
 
 
