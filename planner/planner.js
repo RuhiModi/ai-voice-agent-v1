@@ -1,28 +1,14 @@
-// planner/planner.js
-
-/**
- * This function will take any normal text
- * and convert it into a very simple call plan.
- * 
- * For now, this is a DUMMY planner.
- * Later, we will connect AI (LLM) here.
- */
-
-export function createCallPlan(inputText) {
+export function planFromText(inputText) {
   return {
-    campaignName: "Sample Campaign",
+    campaignType: "informational",
     language: "gu-IN",
-
-    script: {
-      INTRO: "નમસ્તે, હું ઓફિસમાંથી બોલું છું.",
-      MESSAGE: "આ એક માહિતી માટેનો કોલ છે.",
-      CONFIRM: "શું તમને માહિતી સમજી ગઈ છે?",
-      END: "આભાર. શુભ દિવસ."
+    goal: "inform user",
+    extractedData: {
+      summary: inputText
     },
-
-    meta: {
-      sourceTextPreview: inputText.slice(0, 200)
-    }
+    suggestedOpening:
+      "નમસ્કાર, હું આપને એક મહત્વની માહિતી આપવા માટે કોલ કરી રહ્યો છું.",
+    suggestedClosing:
+      "આભાર, શુભ દિવસ."
   };
 }
-
