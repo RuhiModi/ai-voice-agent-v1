@@ -1,3 +1,4 @@
+// conversation states (do not remove)
 export const STATES = {
   INTRO: "intro",
 
