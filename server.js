@@ -51,9 +51,11 @@ const ttsClient = new textToSpeech.TextToSpeechClient({
    GOOGLE SHEETS
 ====================== */
 const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
+  credentials: googleCredentials,
+  projectId: googleCredentials.project_id,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
+
 const sheets = google.sheets({ version: "v4", auth });
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 
