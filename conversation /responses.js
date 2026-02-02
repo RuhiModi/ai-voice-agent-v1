@@ -1,3 +1,4 @@
+// conversation states (do not remove)
 export const RESPONSES = {
   intro: {
     text: "નમસ્તે, હું દરિયાપુરના ધારાસભ્ય કૌશિક જૈનના ઇ-કાર્યાલય તરફથી બોલું છું. શું હું આપનો થોડો સમય લઈ શકું?",
