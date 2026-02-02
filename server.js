@@ -22,6 +22,7 @@ import { buildCampaign } from "./planner/campaignBuilder.js";
 import { loadFromText } from "./knowledge/textSource.js";
 import { loadFromUrl } from "./knowledge/urlSource.js";
 import { loadFromFile } from "./knowledge/fileSource.js";
+import { mapCampaignToConversation } from "./conversation/mapper/campaignToConversation.js";
 
 dotenv.config();
 
@@ -328,24 +329,40 @@ app.post("/call", async (req, res) => {
     method: "POST"
   });
 
-  sessions.set(call.sid, {
-    sid: call.sid,
-    userPhone: to,
-    startTime: Date.now(),
-    endTime: null,
-    callbackTime: null,
-    state: STATES.INTRO,
-    agentTexts: [],
-    userTexts: [],
-    userBuffer: [],
-    //rawUserSpeech: [],
-    liveBuffer: "",
-    unclearCount: 0,
-    confidenceScore: 0,
-    hasLogged: false,
-    conversationFlow: [], 
-    result: ""
-  });
+//  sessions.set(call.sid, {
+ //    sid: call.sid,
+//     userPhone: to,
+ //    startTime: Date.now(),
+//     endTime: null,
+//     callbackTime: null,
+//     state: STATES.INTRO,
+//     agentTexts: [],
+//     userTexts: [],
+//     userBuffer: [],
+  // //   //rawUserSpeech: [],
+ //    liveBuffer: "",
+//     unclearCount: 0,
+//     confidenceScore: 0,
+    // hasLogged: false,
+  //   conversationFlow: [], 
+    // result: ""
+//   });
+
+
+         sessions.set(call.sid, {
+           sid: call.sid,
+           userPhone: to,
+           startTime: Date.now(),
+           state: STATES.INTRO,
+
+           campaign,
+           dynamicResponses: mapCampaignToConversation(campaign),
+
+           agentTexts: [],
+           userTexts: [],
+           conversationFlow: [],
+           hasLogged: false
+      });
 
   res.json({ status: "calling" });
 });
@@ -370,6 +387,22 @@ app.post("/bulk-call", async (req, res) => {
 
         await updateBulkRowByPhone(phone, batchId, "Calling", call.sid);
 
+         sessions.set(call.sid, {
+           sid: call.sid,
+           userPhone: to,
+           startTime: Date.now(),
+           state: STATES.INTRO,
+
+           campaign,
+           dynamicResponses: mapCampaignToConversation(campaign),
+
+           agentTexts: [],
+           userTexts: [],
+           conversationFlow: [],
+           hasLogged: false
+      });
+
+/* ======================
         sessions.set(call.sid, {
           sid: call.sid,
           userPhone: phone,
@@ -389,6 +422,9 @@ app.post("/bulk-call", async (req, res) => {
           hasLogged: false,  
           result: ""
         });
+====================== */
+        
+         
       } catch (e) {
         console.error("Bulk call failed:", phone, e.message);
         await updateBulkRowByPhone(phone, batchId, "Failed");
@@ -404,8 +440,14 @@ app.post("/bulk-call", async (req, res) => {
 ====================== */
 app.post("/answer", (req, res) => {
   const s = sessions.get(req.body.CallSid);
-  s.agentTexts.push(RESPONSES[STATES.INTRO].text);
-  s.conversationFlow.push(`AI: ${RESPONSES[STATES.INTRO].text}`); 
+  s.agentTexts.push(const responseText =
+  s.dynamicResponses?.[STATES.INTRO]?.text ||
+  RESPONSES[STATES.INTRO].text;
+);
+  s.conversationFlow.push(`AI: ${const responseText =
+  s.dynamicResponses?.[STATES.INTRO]?.text ||
+  RESPONSES[STATES.INTRO].text;
+}`); 
 
   res.type("text/xml").send(`
 <Response>
