@@ -23,6 +23,7 @@ dotenv.config();
 /* ======================
    BASIC SETUP
 ====================== */
+const googleCredentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
@@ -41,7 +42,10 @@ const twilioClient = twilio(
 /* ======================
    GOOGLE TTS
 ====================== */
-const ttsClient = new textToSpeech.TextToSpeechClient();
+const ttsClient = new textToSpeech.TextToSpeechClient({
+  credentials: googleCredentials,
+  projectId: googleCredentials.project_id
+});
 
 /* ======================
    GOOGLE SHEETS
