@@ -647,6 +647,25 @@ app.get("/health", (req, res) => {
 
 
 // planner test 👈 ADD HERE
+app.post("/internal/campaign/preview", async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    if (!text) {
+      return res.status(400).json({ error: "text is required" });
+    }
+
+    const plan = await planFromText(text);
+
+    res.json({
+      success: true,
+      campaign: plan
+    });
+  } catch (err) {
+    console.error("Campaign preview error:", err.message);
+    res.status(500).json({ error: "planner_failed" });
+  }
+});
 
 
 /* ======================
