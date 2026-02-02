@@ -1,3 +1,4 @@
+// conversation states (do not remove)
 export const RULES = {
   MAX_UNCLEAR: 3,
   CONFIRM_AFTER: 2,
