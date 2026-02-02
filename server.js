@@ -631,6 +631,15 @@ app.post("/call-status", async (req, res) => {
   res.sendStatus(200);
 });
 
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "ai-voice-agent-v1",
+    time: new Date().toISOString()
+  });
+});
+
+
 /* ======================
    START
 ====================== */
