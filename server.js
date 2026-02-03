@@ -354,10 +354,7 @@ async function buildCampaignFromText(text) {
 app.post("/call", async (req, res) => {
   try {
     const { to, campaignId } = req.body;
-
-    if (!to) {
-      return res.status(400).json({ error: "Phone number required" });
-    }
+    if (!to) return res.status(400).json({ error: "Phone number required" });
 
     let campaign = null;
     let dynamicResponses = null;
@@ -365,7 +362,7 @@ app.post("/call", async (req, res) => {
     if (campaignId) {
       const record = await getCampaignById(campaignId);
       if (!record) {
-        return res.status(404).json({ error: "campaign_not_found", campaignId });
+        return res.status(404).json({ error: "campaign_not_found" });
       }
       campaign = record.campaign;
       dynamicResponses = mapCampaignToConversation(campaign);
@@ -385,10 +382,8 @@ app.post("/call", async (req, res) => {
       userPhone: to,
       startTime: Date.now(),
       state: STATES.INTRO,
-
       campaign,
       dynamicResponses,
-
       agentTexts: [],
       userTexts: [],
       conversationFlow: [],
@@ -396,17 +391,12 @@ app.post("/call", async (req, res) => {
       hasLogged: false
     });
 
-    res.json({
-      status: "calling",
-      callSid: call.sid,
-      hasCampaign: !!campaign
-    });
+    res.json({ status: "calling", callSid: call.sid, hasCampaign: !!campaign });
   } catch (err) {
-    console.error("Error initiating call:", err.message);
+    console.error("call error:", err);
     res.status(500).json({ error: "call_failed" });
   }
 });
-
 
 /* ======================
    BULK CALL
@@ -484,43 +474,33 @@ app.post("/bulk-call", async (req, res) => {
 });
 
 /* ======================
-   ANSWER
-====================== */
-/* ======================
    ANSWER (Twilio Webhook)
 ====================== */
 app.post("/answer", (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
     if (!s) {
-      return res.type("text/xml").send(`<Response><Hangup/></Response>`);
+      return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
 
-    const responseText =
+    s.state = STATES.INTRO;
+
+    const text =
       s.dynamicResponses?.[STATES.INTRO]?.text ||
       RESPONSES[STATES.INTRO].text;
 
-    s.agentTexts.push(responseText);
-    s.conversationFlow.push(`AI: ${responseText}`);
+    s.agentTexts.push(text);
+    s.conversationFlow.push(`AI: ${text}`);
 
-    return res.type("text/xml").send(`
+    res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${responseText}</Say>
-  <Gather
-    input="speech"
-    language="gu-IN"
-    timeout="15"
-    speechTimeout="auto"
-    action="${BASE_URL}/listen"
-  />
-</Response>
-`);
-  } catch (err) {
-    console.error("Error in /answer:", err.message);
-    return res.type("text/xml").send(`<Response><Hangup/></Response>`);
+  <Say language="gu-IN">${text}</Say>
+  <Gather input="speech" language="gu-IN" action="${BASE_URL}/listen"/>
+</Response>`);
+  } catch (e) {
+    res.type("text/xml").send("<Response><Hangup/></Response>");
   }
 });
-
 
 /* ======================
    PARTIAL BUFFER
@@ -543,7 +523,7 @@ app.post("/listen", async (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
     if (!s) {
-      return res.type("text/xml").send(`<Response><Hangup/></Response>`);
+      return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
 
     const raw = normalizeUserText(req.body.SpeechResult || "");
@@ -562,40 +542,31 @@ app.post("/listen", async (req, res) => {
 
     s.state = next;
 
-    const responseText =
+    const text =
       s.dynamicResponses?.[next]?.text ||
       RESPONSES[next].text;
 
-    s.agentTexts.push(responseText);
-    s.conversationFlow.push(`AI: ${responseText}`);
+    s.agentTexts.push(text);
+    s.conversationFlow.push(`AI: ${text}`);
 
     if (RESPONSES[next]?.end) {
       return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${responseText}</Say>
+  <Say language="gu-IN">${text}</Say>
   <Hangup/>
-</Response>
-`);
+</Response>`);
     }
 
-    return res.type("text/xml").send(`
+    res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${responseText}</Say>
-  <Gather
-    input="speech"
-    language="gu-IN"
-    timeout="15"
-    speechTimeout="auto"
-    action="${BASE_URL}/listen"
-  />
-</Response>
-`);
+  <Say language="gu-IN">${text}</Say>
+  <Gather input="speech" language="gu-IN" action="${BASE_URL}/listen"/>
+</Response>`);
   } catch (err) {
-    console.error("Error in /listen:", err.message);
-    return res.type("text/xml").send(`<Response><Hangup/></Response>`);
+    console.error("listen error:", err);
+    res.type("text/xml").send("<Response><Hangup/></Response>");
   }
 });
-
 
     /* ======================
        PRIORITY 1: BUSY INTENT
@@ -781,18 +752,13 @@ app.post("/listen", async (req, res) => {
    CALL STATUS
 ====================== */
 app.post("/call-status", async (req, res) => {
-  try {
-    const s = sessions.get(req.body.CallSid);
-    if (s && !s.hasLogged) {
-      s.hasLogged = true;
-    }
-    if (s) sessions.delete(s.sid);
-    res.sendStatus(200);
-  } catch {
-    res.sendStatus(200);
+  const s = sessions.get(req.body.CallSid);
+  if (s && !s.hasLogged) {
+    s.hasLogged = true;
+    sessions.delete(s.sid);
   }
+  res.sendStatus(200);
 });
-
 
 
 /* ======================
@@ -811,19 +777,12 @@ app.get("/health", (req, res) => {
    CAMPAIGN FETCH
 ====================== */
 app.get("/internal/campaign/:id", async (req, res) => {
-  try {
-    const campaign = await getCampaignById(req.params.id);
-
-    if (!campaign) {
-      return res.status(404).json({ error: "campaign_not_found" });
-    }
-
-    res.json({ success: true, campaign });
-  } catch (err) {
-    res.status(500).json({ error: "internal_error" });
+  const campaign = await getCampaignById(req.params.id);
+  if (!campaign) {
+    return res.status(404).json({ error: "campaign_not_found" });
   }
+  res.json({ success: true, campaign });
 });
-
 
 //new compaign health check
 app.get("/internal/campaign/:id", async (req, res) => {
