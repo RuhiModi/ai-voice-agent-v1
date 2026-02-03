@@ -498,34 +498,54 @@ app.post("/bulk-call", async (req, res) => {
 /* ======================
    ANSWER
 ====================== */
+/* ======================
+   ANSWER (Twilio Webhook)
+====================== */
 app.post("/answer", (req, res) => {
   try {
-    const s = sessions.get(req.body.CallSid);
-    
+    const callSid = req.body.CallSid;
+    const s = sessions.get(callSid);
+
+    // Safety: session missing
     if (!s) {
-      return res.type("text/xml").send(`<Response><Hangup/></Response>`);
+      return res
+        .type("text/xml")
+        .send(`<Response><Hangup/></Response>`);
     }
 
-    const responseText = s.dynamicResponses?.[STATES.INTRO]?.text || RESPONSES[STATES.INTRO].text;
-    
+    // Pick dynamic campaign response OR fallback static response
+    const responseText =
+      s.dynamicResponses?.[STATES.INTRO]?.text ||
+      RESPONSES[STATES.INTRO].text;
+
+    // Log conversation
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
 
-    res.type("text/xml").send(`
+    // Send valid TwiML
+    return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">
-    ${responseText}
-  </Say>
-  <Gather input="speech" language="gu-IN"
-    timeout="15" speechTimeout="auto"
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather
+    input="speech"
+    language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
     partialResultCallback="${BASE_URL}/partial"
-    action="${BASE_URL}/listen"/>
-</Response>`);
+    action="${BASE_URL}/listen"
+  />
+</Response>
+`);
   } catch (error) {
-    console.error("Error in /answer:", error.message);
-    res.type("text/xml").send(`<Response><Hangup/></Response>`);
+    console.error("❌ Error in /answer:", error.message);
+
+    // Absolute fallback for Twilio
+    return res
+      .type("text/xml")
+      .send(`<Response><Hangup/></Response>`);
   }
 });
+
 
 /* ======================
    PARTIAL BUFFER
