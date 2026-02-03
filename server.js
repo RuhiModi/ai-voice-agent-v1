@@ -773,6 +773,10 @@ app.post("/internal/campaign/from-source", async (req, res) => {
   try {
     const { type, payload } = req.body;
 
+    if (!type || !payload) {
+      return res.status(400).json({ error: "type and payload required" });
+    }
+
     let text;
 
     if (type === "text") {
@@ -785,22 +789,29 @@ app.post("/internal/campaign/from-source", async (req, res) => {
       return res.status(400).json({ error: "invalid source type" });
     }
 
-    // 🔑 SAVE TO DATABASE (NEW)
-    const campaignRow = await createCampaign({
-      sourceType: type,
-      rawText: text
-    });
+    if (!text) {
+      return res.status(400).json({ error: "failed to extract text" });
+    }
 
+    // 🧠 Build campaign
     const campaign = await planFromText(text);
+
+    // 💾 SAVE TO DB (THIS WAS MISSING)
+    const saved = await createCampaign({
+      source_type: type,
+      source_payload: payload,
+      campaign_json: campaign
+    });
 
     res.json({
       success: true,
-      campaignId: campaignRow.id,
+      campaignId: saved.id,
       sourceType: type,
       campaign
     });
+
   } catch (err) {
-    console.error("DB insert error:", err.message);
+    console.error("from-source error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
