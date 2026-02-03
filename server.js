@@ -364,14 +364,9 @@ app.post("/call", async (req, res) => {
 
     if (campaignId) {
       const record = await getCampaignById(campaignId);
-
       if (!record) {
-        return res.status(404).json({
-          error: "campaign_not_found",
-          campaignId
-        });
+        return res.status(404).json({ error: "campaign_not_found", campaignId });
       }
-
       campaign = record.campaign;
       dynamicResponses = mapCampaignToConversation(campaign);
     }
@@ -389,44 +384,29 @@ app.post("/call", async (req, res) => {
       sid: call.sid,
       userPhone: to,
       startTime: Date.now(),
-      endTime: null,
-      callbackTime: null,
-      
       state: STATES.INTRO,
-      
-      // campaign
+
       campaign,
       dynamicResponses,
-      
-      // conversation tracking
+
       agentTexts: [],
       userTexts: [],
-      userBuffer: [],
-      liveBuffer: "",
       conversationFlow: [],
-      
-      // logic helpers
       unclearCount: 0,
-      confidenceScore: 0,
-      
-      // lifecycle
-      hasLogged: false,
-      result: ""
-      });
-
+      hasLogged: false
+    });
 
     res.json({
       status: "calling",
       callSid: call.sid,
       hasCampaign: !!campaign
     });
-  } catch (error) {
-    console.error("Error initiating call:", error.message);
-    console.log("DEBUG /call campaignId =", campaignId);
-
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    console.error("Error initiating call:", err.message);
+    res.status(500).json({ error: "call_failed" });
   }
 });
+
 
 /* ======================
    BULK CALL
@@ -438,7 +418,6 @@ app.post("/bulk-call", async (req, res) => {
     if (!phones.length) {
       return res.status(400).json({ error: "No phone numbers provided" });
     }
-
     if (!batchId) {
       return res.status(400).json({ error: "Batch ID required" });
     }
@@ -448,14 +427,9 @@ app.post("/bulk-call", async (req, res) => {
 
     if (campaignId) {
       const record = await getCampaignById(campaignId);
-
       if (!record) {
-        return res.status(404).json({
-          error: "campaign_not_found",
-          campaignId
-        });
+        return res.status(404).json({ error: "campaign_not_found", campaignId });
       }
-
       campaign = record.campaign;
       dynamicResponses = mapCampaignToConversation(campaign);
     }
@@ -479,31 +453,19 @@ app.post("/bulk-call", async (req, res) => {
             userPhone: phone,
             batchId,
             startTime: Date.now(),
-            endTime: null,
-            callbackTime: null,
-            
             state: STATES.INTRO,
-            
+
             campaign,
             dynamicResponses,
-            
+
             agentTexts: [],
             userTexts: [],
-            userBuffer: [],
-            liveBuffer: "",
             conversationFlow: [],
-            
             unclearCount: 0,
-            confidenceScore: 0,
-            
-            hasLogged: false,
-            result: ""
-            });
-
+            hasLogged: false
+          });
         } catch (e) {
           console.error("Bulk call failed:", phone, e.message);
-          console.log("DEBUG /call campaignId =", campaignId);
-
           await updateBulkRowByPhone(phone, batchId, "Failed");
         }
       }, index * 1500);
@@ -515,9 +477,9 @@ app.post("/bulk-call", async (req, res) => {
       batchId,
       hasCampaign: !!campaign
     });
-  } catch (error) {
-    console.error("Error initiating bulk calls:", error.message);
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    console.error("Bulk call error:", err.message);
+    res.status(500).json({ error: "bulk_call_failed" });
   }
 });
 
@@ -530,14 +492,8 @@ app.post("/bulk-call", async (req, res) => {
 app.post("/answer", (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
-
     if (!s) {
       return res.type("text/xml").send(`<Response><Hangup/></Response>`);
-    }
-
-    // 🔑 CRITICAL: lock state ONCE
-    if (!s.state) {
-      s.state = STATES.INTRO;
     }
 
     const responseText =
@@ -549,9 +505,7 @@ app.post("/answer", (req, res) => {
 
     return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">
-    ${responseText}
-  </Say>
+  <Say language="gu-IN">${responseText}</Say>
   <Gather
     input="speech"
     language="gu-IN"
@@ -567,6 +521,7 @@ app.post("/answer", (req, res) => {
   }
 });
 
+
 /* ======================
    PARTIAL BUFFER
 ====================== */
@@ -575,12 +530,11 @@ app.post("/partial", (req, res) => {
   if (!s) return res.sendStatus(200);
 
   const partial = (req.body.UnstableSpeechResult || "").trim();
-  if (partial) {
-    s.lastPartialAt = Date.now();
-  }
+  if (partial) s.lastPartialAt = Date.now();
 
   res.sendStatus(200);
 });
+
 
 /* ======================
    LISTEN (FINAL – STABLE)
@@ -588,21 +542,64 @@ app.post("/partial", (req, res) => {
 app.post("/listen", async (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
-
     if (!s) {
       return res.type("text/xml").send(`<Response><Hangup/></Response>`);
     }
 
-    // 🔒 HARD STATE LOCK (prevents looping)
-    if (!s.state) {
-      s.state = STATES.INTRO;
+    const raw = normalizeUserText(req.body.SpeechResult || "");
+    s.conversationFlow.push(`User: ${raw}`);
+
+    let next;
+
+    if (s.state === STATES.INTRO) {
+      next = STATES.TASK_CHECK;
+    } else {
+      const { status } = detectTaskStatus(raw);
+      if (status === "DONE") next = STATES.TASK_DONE;
+      else if (status === "PENDING") next = STATES.TASK_PENDING;
+      else next = STATES.ESCALATE;
     }
 
-    const raw = normalizeUserText(req.body.SpeechResult || "");
+    s.state = next;
+
+    const responseText =
+      s.dynamicResponses?.[next]?.text ||
+      RESPONSES[next].text;
+
+    s.agentTexts.push(responseText);
+    s.conversationFlow.push(`AI: ${responseText}`);
+
+    if (RESPONSES[next]?.end) {
+      return res.type("text/xml").send(`
+<Response>
+  <Say language="gu-IN">${responseText}</Say>
+  <Hangup/>
+</Response>
+`);
+    }
+
+    return res.type("text/xml").send(`
+<Response>
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather
+    input="speech"
+    language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"
+  />
+</Response>
+`);
+  } catch (err) {
+    console.error("Error in /listen:", err.message);
+    return res.type("text/xml").send(`<Response><Hangup/></Response>`);
+  }
+});
+
 
     /* ======================
        PRIORITY 1: BUSY INTENT
-    ====================== */
+  
     if (s.state === STATES.INTRO && isBusyIntent(raw)) {
       s.conversationFlow.push(`User: ${raw}`);
 
@@ -630,10 +627,10 @@ app.post("/listen", async (req, res) => {
 </Response>
 `);
     }
-
+  ====================== */
     /* ======================
        PRIORITY 2: INVALID / SHORT INPUT
-    ====================== */
+
     if (!raw || raw.length < 3) {
       s.unclearCount = (s.unclearCount || 0) + 1;
 
@@ -660,7 +657,7 @@ app.post("/listen", async (req, res) => {
 </Response>
 `);
     }
-
+  ====================== */
     /* ======================
        NORMAL FLOW
     ====================== */
@@ -716,7 +713,7 @@ app.post("/listen", async (req, res) => {
 
     /* ======================
        FINAL USER TEXT FLUSH
-    ====================== */
+   
     if (s.userBuffer.length) {
       const combined = s.userBuffer.join(" ");
       const last = s.userTexts[s.userTexts.length - 1];
@@ -730,7 +727,7 @@ app.post("/listen", async (req, res) => {
     const responseText = s.dynamicResponses?.[next]?.text || RESPONSES[next].text;
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
-
+ ====================== */
     /* ======================
        END STATE
     ====================== */
@@ -786,28 +783,17 @@ app.post("/listen", async (req, res) => {
 app.post("/call-status", async (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
-
     if (s && !s.hasLogged) {
-      s.result = s.result || "abandoned";
-      s.endTime = Date.now();
-      await logToSheet(s);
       s.hasLogged = true;
     }
-
-    if (s && s.batchId) {
-      await updateBulkByCallSid(req.body.CallSid, "Completed");
-    }
-
-    if (s) {
-      sessions.delete(s.sid);
-    }
-
+    if (s) sessions.delete(s.sid);
     res.sendStatus(200);
-  } catch (error) {
-    console.error("Error in /call-status:", error.message);
+  } catch {
     res.sendStatus(200);
   }
 });
+
+
 
 /* ======================
    HEALTH CHECK
@@ -820,6 +806,24 @@ app.get("/health", (req, res) => {
     activeSessions: sessions.size
   });
 });
+
+/* ======================
+   CAMPAIGN FETCH
+====================== */
+app.get("/internal/campaign/:id", async (req, res) => {
+  try {
+    const campaign = await getCampaignById(req.params.id);
+
+    if (!campaign) {
+      return res.status(404).json({ error: "campaign_not_found" });
+    }
+
+    res.json({ success: true, campaign });
+  } catch (err) {
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 
 //new compaign health check
 app.get("/internal/campaign/:id", async (req, res) => {
