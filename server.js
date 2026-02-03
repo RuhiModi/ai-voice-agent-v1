@@ -24,6 +24,8 @@ import { loadFromUrl } from "./knowledge/urlSource.js";
 import { loadFromFile } from "./knowledge/fileSource.js";
 import { mapCampaignToConversation } from "./conversation/mapper/campaignToConversation.js";
 import { createCampaign } from "./db/campaigns.js";
+import { getCampaignById } from "./db/campaigns.js";
+
 
 dotenv.config();
 
@@ -741,6 +743,25 @@ app.get("/health", (req, res) => {
     time: new Date().toISOString(),
     activeSessions: sessions.size
   });
+});
+
+//new compaign health check
+app.get("/internal/campaign/:id", async (req, res) => {
+  try {
+    const campaign = await getCampaignById(req.params.id);
+
+    if (!campaign) {
+      return res.status(404).json({ error: "campaign_not_found" });
+    }
+
+    res.json({
+      success: true,
+      campaign
+    });
+  } catch (err) {
+    console.error("Get campaign error:", err.message);
+    res.status(500).json({ error: "internal_error" });
+  }
 });
 
 /* ======================
