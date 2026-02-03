@@ -513,7 +513,9 @@ app.post("/answer", (req, res) => {
 
     res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${STATES.INTRO}.mp3</Play>
+  <Say language="gu-IN">
+    ${responseText}
+  </Say>
   <Gather input="speech" language="gu-IN"
     timeout="15" speechTimeout="auto"
     partialResultCallback="${BASE_URL}/partial"
