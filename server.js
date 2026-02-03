@@ -353,7 +353,7 @@ async function buildCampaignFromText(text) {
 ====================== */
 app.post("/call", async (req, res) => {
   try {
-    const { to, campaignText } = req.body;
+    const { to, campaignId } = req.body;
 
     if (!to) {
       return res.status(400).json({ error: "Phone number required" });
@@ -363,12 +363,12 @@ app.post("/call", async (req, res) => {
     let campaign = null;
     let dynamicResponses = null;
 
-    if (campaignText) {
-      campaign = await buildCampaignFromText(campaignText);
-      if (campaign) {
-        dynamicResponses = mapCampaignToConversation(campaign);
-      }
-    }
+   // if (campaignText) {
+   //   campaign = await buildCampaignFromText(campaignText);
+    //  if (campaign) {
+    //    dynamicResponses = mapCampaignToConversation(campaign);
+    //  }
+  //  }
 
     const call = await twilioClient.calls.create({
       to,
@@ -415,7 +415,7 @@ app.post("/call", async (req, res) => {
 ====================== */
 app.post("/bulk-call", async (req, res) => {
   try {
-    const { phones = [], batchId, campaignText } = req.body;
+    const { phones = [], batchId, campaignID } = req.body;
 
     if (!phones.length) {
       return res.status(400).json({ error: "No phone numbers provided" });
@@ -429,12 +429,12 @@ app.post("/bulk-call", async (req, res) => {
     let campaign = null;
     let dynamicResponses = null;
 
-    if (campaignText) {
-      campaign = await buildCampaignFromText(campaignText);
-      if (campaign) {
-        dynamicResponses = mapCampaignToConversation(campaign);
-      }
-    }
+   // if (campaignText) {
+    //  campaign = await buildCampaignFromText(campaignText);
+    //  if (campaign) {
+     //   dynamicResponses = mapCampaignToConversation(campaign);
+    //  }
+   //    }
 
     phones.forEach((phone, index) => {
       setTimeout(async () => {
