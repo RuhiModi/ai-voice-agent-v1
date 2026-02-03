@@ -23,6 +23,7 @@ import { loadFromText } from "./knowledge/textSource.js";
 import { loadFromUrl } from "./knowledge/urlSource.js";
 import { loadFromFile } from "./knowledge/fileSource.js";
 import { mapCampaignToConversation } from "./conversation/mapper/campaignToConversation.js";
+import { createCampaign } from "./db/campaigns.js";
 
 dotenv.config();
 
@@ -784,18 +785,26 @@ app.post("/internal/campaign/from-source", async (req, res) => {
       return res.status(400).json({ error: "invalid source type" });
     }
 
+    // 🔑 SAVE TO DATABASE (NEW)
+    const campaignRow = await createCampaign({
+      sourceType: type,
+      rawText: text
+    });
+
     const campaign = await planFromText(text);
 
     res.json({
       success: true,
+      campaignId: campaignRow.id,
       sourceType: type,
       campaign
     });
   } catch (err) {
-    console.error("Campaign from source error:", err.message);
+    console.error("DB insert error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /* ======================
    ERROR HANDLER
