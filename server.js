@@ -389,16 +389,31 @@ app.post("/call", async (req, res) => {
       sid: call.sid,
       userPhone: to,
       startTime: Date.now(),
+      endTime: null,
+      callbackTime: null,
+      
       state: STATES.INTRO,
-
+      
+      // campaign
       campaign,
       dynamicResponses,
-
+      
+      // conversation tracking
       agentTexts: [],
       userTexts: [],
+      userBuffer: [],
+      liveBuffer: "",
       conversationFlow: [],
-      hasLogged: false
-    });
+      
+      // logic helpers
+      unclearCount: 0,
+      confidenceScore: 0,
+      
+      // lifecycle
+      hasLogged: false,
+      result: ""
+      });
+
 
     res.json({
       status: "calling",
@@ -464,16 +479,27 @@ app.post("/bulk-call", async (req, res) => {
             userPhone: phone,
             batchId,
             startTime: Date.now(),
+            endTime: null,
+            callbackTime: null,
+            
             state: STATES.INTRO,
-
+            
             campaign,
             dynamicResponses,
-
+            
             agentTexts: [],
             userTexts: [],
+            userBuffer: [],
+            liveBuffer: "",
             conversationFlow: [],
-            hasLogged: false
-          });
+            
+            unclearCount: 0,
+            confidenceScore: 0,
+            
+            hasLogged: false,
+            result: ""
+            });
+
         } catch (e) {
           console.error("Bulk call failed:", phone, e.message);
           console.log("DEBUG /call campaignId =", campaignId);
