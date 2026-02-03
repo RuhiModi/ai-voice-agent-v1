@@ -407,6 +407,8 @@ app.post("/call", async (req, res) => {
     });
   } catch (error) {
     console.error("Error initiating call:", error.message);
+    console.log("DEBUG /call campaignId =", campaignId);
+
     res.status(500).json({ error: error.message });
   }
 });
@@ -474,6 +476,8 @@ app.post("/bulk-call", async (req, res) => {
           });
         } catch (e) {
           console.error("Bulk call failed:", phone, e.message);
+          console.log("DEBUG /call campaignId =", campaignId);
+
           await updateBulkRowByPhone(phone, batchId, "Failed");
         }
       }, index * 1500);
