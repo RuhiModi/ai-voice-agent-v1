@@ -359,16 +359,22 @@ app.post("/call", async (req, res) => {
       return res.status(400).json({ error: "Phone number required" });
     }
 
-    // Build campaign if provided
     let campaign = null;
     let dynamicResponses = null;
 
-   // if (campaignText) {
-   //   campaign = await buildCampaignFromText(campaignText);
-    //  if (campaign) {
-    //    dynamicResponses = mapCampaignToConversation(campaign);
-    //  }
-  //  }
+    if (campaignId) {
+      const record = await getCampaignById(campaignId);
+
+      if (!record) {
+        return res.status(404).json({
+          error: "campaign_not_found",
+          campaignId
+        });
+      }
+
+      campaign = record.campaign;
+      dynamicResponses = mapCampaignToConversation(campaign);
+    }
 
     const call = await twilioClient.calls.create({
       to,
@@ -383,26 +389,21 @@ app.post("/call", async (req, res) => {
       sid: call.sid,
       userPhone: to,
       startTime: Date.now(),
-      endTime: null,
-      callbackTime: null,
       state: STATES.INTRO,
-      campaign: campaign,
-      dynamicResponses: dynamicResponses,
+
+      campaign,
+      dynamicResponses,
+
       agentTexts: [],
       userTexts: [],
-      userBuffer: [],
-      liveBuffer: "",
-      unclearCount: 0,
-      confidenceScore: 0,
       conversationFlow: [],
-      hasLogged: false,
-      result: ""
+      hasLogged: false
     });
 
-    res.json({ 
-      status: "calling", 
+    res.json({
+      status: "calling",
       callSid: call.sid,
-      hasCampaign: !!campaign 
+      hasCampaign: !!campaign
     });
   } catch (error) {
     console.error("Error initiating call:", error.message);
@@ -415,7 +416,7 @@ app.post("/call", async (req, res) => {
 ====================== */
 app.post("/bulk-call", async (req, res) => {
   try {
-    const { phones = [], batchId, campaignID } = req.body;
+    const { phones = [], batchId, campaignId } = req.body;
 
     if (!phones.length) {
       return res.status(400).json({ error: "No phone numbers provided" });
@@ -425,16 +426,22 @@ app.post("/bulk-call", async (req, res) => {
       return res.status(400).json({ error: "Batch ID required" });
     }
 
-    // Build campaign if provided
     let campaign = null;
     let dynamicResponses = null;
 
-   // if (campaignText) {
-    //  campaign = await buildCampaignFromText(campaignText);
-    //  if (campaign) {
-     //   dynamicResponses = mapCampaignToConversation(campaign);
-    //  }
-   //    }
+    if (campaignId) {
+      const record = await getCampaignById(campaignId);
+
+      if (!record) {
+        return res.status(404).json({
+          error: "campaign_not_found",
+          campaignId
+        });
+      }
+
+      campaign = record.campaign;
+      dynamicResponses = mapCampaignToConversation(campaign);
+    }
 
     phones.forEach((phone, index) => {
       setTimeout(async () => {
@@ -455,20 +462,15 @@ app.post("/bulk-call", async (req, res) => {
             userPhone: phone,
             batchId,
             startTime: Date.now(),
-            endTime: null,
-            callbackTime: null,
             state: STATES.INTRO,
-            campaign: campaign,
-            dynamicResponses: dynamicResponses,
+
+            campaign,
+            dynamicResponses,
+
             agentTexts: [],
             userTexts: [],
-            userBuffer: [],
-            liveBuffer: "",
-            unclearCount: 0,
-            confidenceScore: 0,
             conversationFlow: [],
-            hasLogged: false,
-            result: ""
+            hasLogged: false
           });
         } catch (e) {
           console.error("Bulk call failed:", phone, e.message);
@@ -477,10 +479,10 @@ app.post("/bulk-call", async (req, res) => {
       }, index * 1500);
     });
 
-    res.json({ 
-      status: "bulk calling started", 
+    res.json({
+      status: "bulk calling started",
       total: phones.length,
-      batchId: batchId,
+      batchId,
       hasCampaign: !!campaign
     });
   } catch (error) {
