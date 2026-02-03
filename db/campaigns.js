@@ -1,20 +1,26 @@
-import { query } from "./index.js";
+// db/campaigns.js
+import { pool } from "./index.js";
 
-export async function insertCampaign({ sourceType, sourcePayload, campaign }) {
-  const res = await query(
-    `
-    INSERT INTO campaigns (source_type, source_payload, campaign_json, language, goal)
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING id
-    `,
-    [
-      sourceType,
-      sourcePayload,
-      campaign,
-      campaign.language,
-      campaign.goal
-    ]
-  );
+/**
+ * Create a campaign record
+ */
+export async function createCampaign({
+  source_type,
+  source_payload,
+  campaign_json
+}) {
+  const query = `
+    INSERT INTO campaigns (source_type, source_payload, campaign_json)
+    VALUES ($1, $2, $3)
+    RETURNING id;
+  `;
 
-  return res.rows[0].id;
+  const values = [
+    source_type,
+    source_payload,
+    campaign_json
+  ];
+
+  const result = await pool.query(query, values);
+  return result.rows[0];
 }
