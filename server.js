@@ -583,11 +583,8 @@ app.post("/partial", (req, res) => {
 });
 
 /* ======================
-   LISTEN (FINAL, STABLE)
+   LISTEN (FINAL – STABLE)
 ====================== */
-if (!s.state) {
-  s.state = STATES.INTRO;
-}
 app.post("/listen", async (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
@@ -596,106 +593,126 @@ app.post("/listen", async (req, res) => {
       return res.type("text/xml").send(`<Response><Hangup/></Response>`);
     }
 
+    // 🔒 HARD STATE LOCK (prevents looping)
+    if (!s.state) {
+      s.state = STATES.INTRO;
+    }
+
     const raw = normalizeUserText(req.body.SpeechResult || "");
-    s.liveBuffer = "";
 
     /* ======================
        PRIORITY 1: BUSY INTENT
     ====================== */
     if (s.state === STATES.INTRO && isBusyIntent(raw)) {
-      const lastUser = s.userTexts[s.userTexts.length - 1];
-      if (raw && raw !== lastUser) {
-        s.userTexts.push(raw);
-      }
-
       s.conversationFlow.push(`User: ${raw}`);
-      
+
       const next = STATES.CALLBACK_TIME;
       s.state = next;
       s.unclearCount = 0;
-      s.userBuffer = [];
-      
-      const responseText = s.dynamicResponses?.[next]?.text || RESPONSES[next].text;
+
+      const responseText =
+        s.dynamicResponses?.[next]?.text ||
+        RESPONSES[next].text;
+
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
 
-      return res.type("text/xml").send(
-        `<Response>
-          <Say language="gu-IN">
-          ${responseText}
-          </Say>
-          <Gather input="speech"
-            language="gu-IN"
-            timeout="15"
-            speechTimeout="auto"
-            partialResultCallback="${BASE_URL}/partial"
-            action="${BASE_URL}/listen"/>
-        </Response>`
-      );
+      return res.type("text/xml").send(`
+<Response>
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather
+    input="speech"
+    language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"
+  />
+</Response>
+`);
     }
 
     /* ======================
-       PRIORITY 2: INVALID INPUT
+       PRIORITY 2: INVALID / SHORT INPUT
     ====================== */
     if (!raw || raw.length < 3) {
-      const next = RULES.nextOnUnclear(++s.unclearCount);
-      const responseText = s.dynamicResponses?.[next]?.text || RESPONSES[next].text;
+      s.unclearCount = (s.unclearCount || 0) + 1;
+
+      const next = RULES.nextOnUnclear(s.unclearCount);
+      s.state = next;
+
+      const responseText =
+        s.dynamicResponses?.[next]?.text ||
+        RESPONSES[next].text;
+
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
 
-      return res.type("text/xml").send(
-        `<Response>
-          <Say language="gu-IN">
-          ${responseText}
-          </Say>
-          <Gather input="speech"
-            language="gu-IN"
-            timeout="15"
-            speechTimeout="auto"
-            partialResultCallback="${BASE_URL}/partial"
-            action="${BASE_URL}/listen"/>
-        </Response>`
-      );
+      return res.type("text/xml").send(`
+<Response>
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather
+    input="speech"
+    language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"
+  />
+</Response>
+`);
     }
 
-    s.conversationFlow.push(`User: ${raw}`);
-    s.userBuffer.push(raw);
-
     /* ======================
-       STATE TRANSITION LOGIC
+       NORMAL FLOW
     ====================== */
+    s.conversationFlow.push(`User: ${raw}`);
+
     let next;
 
     if (s.state === STATES.INTRO) {
       next = STATES.TASK_CHECK;
-
-    } else if (s.state === STATES.CALLBACK_TIME) {
-      s.callbackTime = raw;
-      next = STATES.CALLBACK_CONFIRM;
-
-    } else if (s.state === STATES.TASK_PENDING) {
-      next = STATES.PROBLEM_RECORDED;
-
     } else {
-      const { status, confidence } = detectTaskStatus(raw);
-      s.confidenceScore = confidence;
+      const { status } = detectTaskStatus(raw);
 
-      if (status === "DONE") {
-        next = STATES.TASK_DONE;
-      } else if (status === "PENDING") {
-        next = STATES.TASK_PENDING;
-      } else {
-        s.unclearCount++;
-
-        if (s.unclearCount === 1) {
-          next = STATES.RETRY_TASK_CHECK;
-        } else if (s.unclearCount === 2) {
-          next = STATES.CONFIRM_TASK;
-        } else {
-          next = STATES.ESCALATE;
-        }
-      }
+      if (status === "DONE") next = STATES.TASK_DONE;
+      else if (status === "PENDING") next = STATES.TASK_PENDING;
+      else next = STATES.ESCALATE;
     }
+
+    s.state = next;
+
+    const responseText =
+      s.dynamicResponses?.[next]?.text ||
+      RESPONSES[next].text;
+
+    s.agentTexts.push(responseText);
+    s.conversationFlow.push(`AI: ${responseText}`);
+
+    if (RESPONSES[next]?.end) {
+      return res.type("text/xml").send(`
+<Response>
+  <Say language="gu-IN">${responseText}</Say>
+  <Hangup/>
+</Response>
+`);
+    }
+
+    return res.type("text/xml").send(`
+<Response>
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather
+    input="speech"
+    language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"
+  />
+</Response>
+`);
+  } catch (err) {
+    console.error("Error in /listen:", err.message);
+    return res.type("text/xml").send(`<Response><Hangup/></Response>`);
+  }
+});
 
     /* ======================
        FINAL USER TEXT FLUSH
