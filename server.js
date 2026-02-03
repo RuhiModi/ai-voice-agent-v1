@@ -529,49 +529,43 @@ app.post("/bulk-call", async (req, res) => {
 ====================== */
 app.post("/answer", (req, res) => {
   try {
-    const callSid = req.body.CallSid;
-    const s = sessions.get(callSid);
+    const s = sessions.get(req.body.CallSid);
 
-    // Safety: session missing
     if (!s) {
-      return res
-        .type("text/xml")
-        .send(`<Response><Hangup/></Response>`);
+      return res.type("text/xml").send(`<Response><Hangup/></Response>`);
     }
 
-    // Pick dynamic campaign response OR fallback static response
+    // 🔑 CRITICAL: lock state ONCE
+    if (!s.state) {
+      s.state = STATES.INTRO;
+    }
+
     const responseText =
       s.dynamicResponses?.[STATES.INTRO]?.text ||
       RESPONSES[STATES.INTRO].text;
 
-    // Log conversation
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
 
-    // Send valid TwiML
     return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${responseText}</Say>
+  <Say language="gu-IN">
+    ${responseText}
+  </Say>
   <Gather
     input="speech"
     language="gu-IN"
     timeout="15"
     speechTimeout="auto"
-    partialResultCallback="${BASE_URL}/partial"
     action="${BASE_URL}/listen"
   />
 </Response>
 `);
-  } catch (error) {
-    console.error("❌ Error in /answer:", error.message);
-
-    // Absolute fallback for Twilio
-    return res
-      .type("text/xml")
-      .send(`<Response><Hangup/></Response>`);
+  } catch (err) {
+    console.error("Error in /answer:", err.message);
+    return res.type("text/xml").send(`<Response><Hangup/></Response>`);
   }
 });
-
 
 /* ======================
    PARTIAL BUFFER
@@ -591,6 +585,9 @@ app.post("/partial", (req, res) => {
 /* ======================
    LISTEN (FINAL, STABLE)
 ====================== */
+if (!s.state) {
+  s.state = STATES.INTRO;
+}
 app.post("/listen", async (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
@@ -624,7 +621,9 @@ app.post("/listen", async (req, res) => {
 
       return res.type("text/xml").send(
         `<Response>
-          <Play>${BASE_URL}/audio/${next}.mp3</Play>
+          <Say language="gu-IN">
+          ${responseText}
+          </Say>
           <Gather input="speech"
             language="gu-IN"
             timeout="15"
@@ -646,7 +645,9 @@ app.post("/listen", async (req, res) => {
 
       return res.type("text/xml").send(
         `<Response>
-          <Play>${BASE_URL}/audio/${next}.mp3</Play>
+          <Say language="gu-IN">
+          ${responseText}
+          </Say>
           <Gather input="speech"
             language="gu-IN"
             timeout="15"
@@ -731,7 +732,9 @@ app.post("/listen", async (req, res) => {
 
       return res.type("text/xml").send(
         `<Response>
-          <Play>${BASE_URL}/audio/${next}.mp3</Play>
+         <Say language="gu-IN">
+          ${responseText}
+          </Say>
           <Hangup/>
         </Response>`
       );
@@ -743,7 +746,9 @@ app.post("/listen", async (req, res) => {
     s.state = next;
     return res.type("text/xml").send(
       `<Response>
-        <Play>${BASE_URL}/audio/${next}.mp3</Play>
+        <Say language="gu-IN">
+         ${responseText}
+        </Say>
         <Gather input="speech"
           language="gu-IN"
           timeout="15"
