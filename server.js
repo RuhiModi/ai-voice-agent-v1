@@ -494,9 +494,11 @@ app.post("/answer", (req, res) => {
       s.state = STATES.INTRO;
     }
 
-    const responseText =
-      (s.dynamicResponses && s.dynamicResponses[STATES.INTRO]?.text)
-      || RESPONSES[STATES.INTRO].text;
+    const responseText = (
+     (s.dynamicResponses && s.dynamicResponses[next]?.text) ||
+     RESPONSES[next]?.text ||
+     "માફ કરશો, કૃપા કરીને ફરીથી કહો."
+   );
 
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
@@ -561,10 +563,12 @@ app.post("/listen", async (req, res) => {
       s.state = next;
       s.unclearCount = 0;
 
-      const responseText =
-       (s.dynamicResponses && s.dynamicResponses[next]?.text)
-       || RESPONSES[next]?.text
-       || "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+      const responseText = (
+        (s.dynamicResponses && s.dynamicResponses[next]?.text) ||
+        RESPONSES[next]?.text ||
+        "માફ કરશો, કૃપા કરીને ફરીથી કહો."
+      );
+
 
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
@@ -583,10 +587,12 @@ app.post("/listen", async (req, res) => {
       const next = RULES.nextOnUnclear(s.unclearCount);
       s.state = next;
 
-      const responseText =
-       (s.dynamicResponses && s.dynamicResponses[next]?.text)
-       || RESPONSES[next]?.text
-       || "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+      const responseText = (
+        (s.dynamicResponses && s.dynamicResponses[next]?.text) ||
+        RESPONSES[next]?.text ||
+        "માફ કરશો, કૃપા કરીને ફરીથી કહો."
+      );
+
 
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
@@ -629,10 +635,12 @@ app.post("/listen", async (req, res) => {
 
     s.state = next;
 
-    const responseText =
-     (s.dynamicResponses && s.dynamicResponses[next]?.text)
-     || RESPONSES[next]?.text
-     || "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+    const responseText = (
+     (s.dynamicResponses && s.dynamicResponses[next]?.text) ||
+     RESPONSES[next]?.text ||
+     "માફ કરશો, કૃપા કરીને ફરીથી કહો."
+   );
+
 
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
