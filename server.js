@@ -537,6 +537,11 @@ app.post("/partial", (req, res) => {
 //Listen helper
 
 async function ensureAudio(state, text) {
+  if (!state) {
+    console.warn("⚠️ ensureAudio called with invalid state:", state);
+    return "intro.mp3"; // SAFE FALLBACK
+  }
+
   const file = `${state}.mp3`;
   const filePath = path.join(AUDIO_DIR, file);
 
@@ -546,6 +551,7 @@ async function ensureAudio(state, text) {
 
   return file;
 }
+
 
 
 /* ======================
