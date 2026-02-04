@@ -535,40 +535,34 @@ app.post("/partial", (req, res) => {
 /* ======================
    LISTEN (FINAL – STABLE)
 ====================== */
-const s = sessions.get(req.body.CallSid);
-if (!s) {
-  return res.type("text/xml").send("<Response><Hangup/></Response>");
-}
-
-if (!s.state) {
-  s.state = STATES.INTRO;
-}
-
-
 app.post("/listen", async (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
+
     if (!s) {
       return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
 
+    // 🔒 Ensure state always exists
+    if (!s.state) {
+      s.state = STATES.INTRO;
+    }
+
     const raw = normalizeUserText(req.body.SpeechResult || "");
 
-    // Priority 1: Busy Intent Detection
+    /* ======================
+       PRIORITY 1: BUSY INTENT
+    ====================== */
     if (s.state === STATES.INTRO && isBusyIntent(raw)) {
       s.conversationFlow.push(`User: ${raw}`);
       if (raw) s.userTexts.push(raw);
 
-      const next = STATES.CALLBACK_TIME;
-      s.state = next;
+      s.state = STATES.CALLBACK_TIME;
       s.unclearCount = 0;
 
-      const responseText = (
-        (s.dynamicResponses && s.dynamicResponses[next]?.text) ||
-        RESPONSES[next]?.text ||
-        "માફ કરશો, કૃપા કરીને ફરીથી કહો."
-      );
-
+      const responseText =
+        s.dynamicResponses?.[STATES.CALLBACK_TIME]?.text ||
+        RESPONSES[STATES.CALLBACK_TIME].text;
 
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
@@ -576,23 +570,25 @@ app.post("/listen", async (req, res) => {
       return res.type("text/xml").send(`
 <Response>
   <Say language="gu-IN">${responseText}</Say>
-  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" action="${BASE_URL}/listen"/>
+  <Gather input="speech" language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"/>
 </Response>`);
     }
 
-    // Priority 2: Invalid/Short Input
+    /* ======================
+       PRIORITY 2: INVALID INPUT
+    ====================== */
     if (!raw || raw.length < 3) {
-      s.unclearCount = (s.unclearCount || 0) + 1;
+      s.unclearCount++;
 
       const next = RULES.nextOnUnclear(s.unclearCount);
       s.state = next;
 
-      const responseText = (
-        (s.dynamicResponses && s.dynamicResponses[next]?.text) ||
-        RESPONSES[next]?.text ||
-        "માફ કરશો, કૃપા કરીને ફરીથી કહો."
-      );
-
+      const responseText =
+        s.dynamicResponses?.[next]?.text ||
+        RESPONSES[next].text;
 
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
@@ -600,62 +596,50 @@ app.post("/listen", async (req, res) => {
       return res.type("text/xml").send(`
 <Response>
   <Say language="gu-IN">${responseText}</Say>
-  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" action="${BASE_URL}/listen"/>
+  <Gather input="speech" language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"/>
 </Response>`);
     }
 
-    // Normal Flow
+    /* ======================
+       NORMAL FLOW
+    ====================== */
     s.conversationFlow.push(`User: ${raw}`);
-    if (raw) s.userTexts.push(raw);
+    s.userTexts.push(raw);
 
     let next;
 
     if (s.state === STATES.INTRO) {
       next = STATES.TASK_CHECK;
-    } else if (s.state === STATES.CALLBACK_TIME) {
-      s.callbackTime = raw;
-      next = STATES.CALLBACK_CONFIRM;
-    } else if (s.state === STATES.TASK_PENDING) {
-      next = STATES.PROBLEM_RECORDED;
     } else {
       const { status, confidence } = detectTaskStatus(raw);
       s.confidenceScore = confidence;
 
-      if (status === "DONE") {
-        next = STATES.TASK_DONE;
-      } else if (status === "PENDING") {
-        next = STATES.TASK_PENDING;
-      } else {
-        s.unclearCount++;
-        if (s.unclearCount === 1) next = STATES.RETRY_TASK_CHECK;
-        else if (s.unclearCount === 2) next = STATES.CONFIRM_TASK;
-        else next = STATES.ESCALATE;
-      }
+      if (status === "DONE") next = STATES.TASK_DONE;
+      else if (status === "PENDING") next = STATES.TASK_PENDING;
+      else next = STATES.ESCALATE;
     }
 
     s.state = next;
 
-    const responseText = (
-     (s.dynamicResponses && s.dynamicResponses[next]?.text) ||
-     RESPONSES[next]?.text ||
-     "માફ કરશો, કૃપા કરીને ફરીથી કહો."
-   );
-
+    const responseText =
+      s.dynamicResponses?.[next]?.text ||
+      RESPONSES[next].text;
 
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
 
-    // Check if conversation should end
+    /* ======================
+       END STATE
+    ====================== */
     if (RESPONSES[next]?.end) {
       s.result = next;
       s.endTime = Date.now();
 
       await logToSheet(s);
       s.hasLogged = true;
-
-      if (s.batchId) {
-        await updateBulkRowByPhone(s.userPhone, s.batchId, "Completed", s.sid);
-      }
 
       sessions.delete(s.sid);
 
@@ -666,16 +650,21 @@ app.post("/listen", async (req, res) => {
 </Response>`);
     }
 
-    // Continue conversation
+    /* ======================
+       CONTINUE
+    ====================== */
     return res.type("text/xml").send(`
 <Response>
   <Say language="gu-IN">${responseText}</Say>
-  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" partialResultCallback="${BASE_URL}/partial" action="${BASE_URL}/listen"/>
+  <Gather input="speech" language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"/>
 </Response>`);
 
   } catch (err) {
-    console.error("Error in /listen:", err.message);
-    return res.type("text/xml").send(`<Response><Hangup/></Response>`);
+    console.error("Error in /listen:", err);
+    return res.type("text/xml").send("<Response><Hangup/></Response>");
   }
 });
 
