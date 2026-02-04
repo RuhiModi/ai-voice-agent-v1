@@ -807,6 +807,17 @@ app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({ error: "Internal server error" });
 });
+/* ======================
+   DEBUG AUDIO FILES
+====================== */
+app.get("/debug/audio", (req, res) => {
+  try {
+    const files = fs.readdirSync(AUDIO_DIR);
+    res.json({ files });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 /* ======================
    START
