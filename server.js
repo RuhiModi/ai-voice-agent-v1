@@ -1,7 +1,7 @@
 /*************************************************
- * GUJARATI AI VOICE AGENT – AI SPEAKS FIRST
- * Fixed: Agent speaks immediately on call connect
- * Using: Twilio + Google TTS (pre-generated audio)
+ * GUJARATI AI VOICE AGENT – HUMANATIC + ROBUST
+ * State-based | Rule-driven | Scriptless
+ * SINGLE + BULK CALL ENABLED
  *************************************************/
 
 import express from "express";
@@ -118,11 +118,39 @@ function formatIST(ts) {
 /* ======================
    HELPERS
 ====================== */
+function hasGujarati(text) {
+  return /[\u0A80-\u0AFF]/.test(text);
+}
+
+function normalizeMixedGujarati(text) {
+  const dict = {
+    aadhar: "આધાર",
+    aadhaar: "આધાર",
+    card: "કાર્ડ",
+    data: "ડેટા",
+    entry: "એન્ટ્રી",
+    update: "સુધારો",
+    correction: "સુધારો",
+    name: "નામ",
+    address: "સરનામું",
+    mobile: "મોબાઇલ",
+    number: "નંબર",
+    change: "ફેરફાર"
+  };
+
+  let out = text;
+  for (const k in dict) {
+    out = out.replace(new RegExp(`\\b${k}\\b`, "gi"), dict[k]);
+  }
+  return out;
+}
+
 function normalizeUserText(text) {
   if (!text) return "";
-  let out = text.toLowerCase().trim();
+  let out = text.toLowerCase();
+  out = normalizeMixedGujarati(out);
   out = out.replace(/\b(umm|uh|hmm|ok|okay)\b/gi, "");
-  return out;
+  return out.trim();
 }
 
 function normalizePhone(phone) {
@@ -142,17 +170,71 @@ function detectTaskStatus(text) {
 
   if (p && !d) return { status: "PENDING", confidence: 90 };
   if (d && !p) return { status: "DONE", confidence: 90 };
+  if (p && d) return { status: "UNCLEAR", confidence: 40 };
   return { status: "UNCLEAR", confidence: 30 };
 }
 
+/* ======================
+   BUSY INTENT
+====================== */
 function isBusyIntent(text) {
   if (!text) return false;
-  const busySignals = ["સમય", "નથી", "પછી", "બાદમાં", "હવે નહીં", "later", "busy"];
+
+  const busySignals = [
+    "સમય",
+    "નથી",
+    "પછી",
+    "બાદમાં",
+    "હવે નહીં",
+    "હવે નથી",
+    "પછી વાત",
+    "later",
+    "busy",
+    "not now"
+  ];
+
   let score = 0;
   for (const w of busySignals) {
     if (text.includes(w)) score++;
   }
+
   return score >= 2;
+}
+
+/* ======================
+   GROQ CLASSIFY (OPTIONAL)
+====================== */
+async function groqClassify(text) {
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama3-8b-8192",
+        temperature: 0,
+        messages: [
+          {
+            role: "system",
+            content: "Classify the user's intent."
+          },
+          {
+            role: "user",
+            content: `User said: "${text}"
+Choose one: DONE, PENDING, BUSY, UNKNOWN`
+          }
+        ]
+      })
+    });
+
+    const data = await response.json();
+    return data.choices[0].message.content.trim().toUpperCase();
+  } catch (error) {
+    console.error("Groq classify error:", error.message);
+    return "UNKNOWN";
+  }
 }
 
 /* ======================
@@ -169,7 +251,10 @@ async function updateBulkRowByPhone(phone, batchId, status, callSid = "") {
     const cleanPhone = normalizePhone(phone);
 
     for (let i = 1; i < rows.length; i++) {
-      if (normalizePhone(rows[i][0]) === cleanPhone && rows[i][1] === batchId) {
+      if (
+        normalizePhone(rows[i][0]) === cleanPhone &&
+        rows[i][1] === batchId
+      ) {
         await sheets.spreadsheets.values.update({
           spreadsheetId: SHEET_ID,
           range: `Bulk_Calls!C${i + 1}:D${i + 1}`,
@@ -250,6 +335,19 @@ async function logToSheet(s) {
 }
 
 /* ======================
+   CAMPAIGN BUILDER
+====================== */
+async function buildCampaignFromText(text) {
+  try {
+    const campaign = await planFromText(text);
+    return campaign;
+  } catch (error) {
+    console.error("Error building campaign:", error.message);
+    return null;
+  }
+}
+
+/* ======================
    SINGLE CALL
 ====================== */
 app.post("/call", async (req, res) => {
@@ -289,6 +387,7 @@ app.post("/call", async (req, res) => {
       dynamicResponses,
       agentTexts: [],
       userTexts: [],
+      userBuffer: [],
       conversationFlow: [],
       unclearCount: 0,
       confidenceScore: 0,
@@ -323,7 +422,7 @@ app.post("/bulk-call", async (req, res) => {
     if (campaignId) {
       const record = await getCampaignById(campaignId);
       if (!record) {
-        return res.status(404).json({ error: "campaign_not_found" });
+        return res.status(404).json({ error: "campaign_not_found", campaignId });
       }
       campaign = record.campaign;
       dynamicResponses = mapCampaignToConversation(campaign);
@@ -355,6 +454,7 @@ app.post("/bulk-call", async (req, res) => {
             dynamicResponses,
             agentTexts: [],
             userTexts: [],
+            userBuffer: [],
             conversationFlow: [],
             unclearCount: 0,
             confidenceScore: 0,
@@ -381,8 +481,7 @@ app.post("/bulk-call", async (req, res) => {
 });
 
 /* ======================
-   ANSWER - AI SPEAKS FIRST! ✅
-   This is called when call connects
+   ANSWER (Twilio Webhook)
 ====================== */
 app.post("/answer", (req, res) => {
   try {
@@ -391,32 +490,18 @@ app.post("/answer", (req, res) => {
       return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
 
-    // Set initial state
     s.state = STATES.INTRO;
 
-    // Get intro message (from campaign or default)
-    const introText = s.dynamicResponses?.[STATES.INTRO]?.text || RESPONSES[STATES.INTRO].text;
+    const text = s.dynamicResponses?.[STATES.INTRO]?.text || RESPONSES[STATES.INTRO].text;
 
-    // Log agent message
-    s.agentTexts.push(introText);
-    s.conversationFlow.push(`AI: ${introText}`);
+    s.agentTexts.push(text);
+    s.conversationFlow.push(`AI: ${text}`);
 
-    console.log(`[${s.sid}] AI speaking first: ${introText.substring(0, 50)}...`);
-
-    // CRITICAL: AI SPEAKS FIRST using pre-generated audio
-    // Then waits for user to speak
     res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${STATES.INTRO}.mp3</Play>
-  <Gather 
-    input="speech" 
-    language="gu-IN" 
-    timeout="10" 
-    speechTimeout="auto"
-    action="${BASE_URL}/listen"
-  />
+  <Say language="gu-IN">${text}</Say>
+  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" action="${BASE_URL}/listen"/>
 </Response>`);
-
   } catch (e) {
     console.error("Error in /answer:", e.message);
     res.type("text/xml").send("<Response><Hangup/></Response>");
@@ -424,7 +509,20 @@ app.post("/answer", (req, res) => {
 });
 
 /* ======================
-   LISTEN - Process User Response
+   PARTIAL BUFFER
+====================== */
+app.post("/partial", (req, res) => {
+  const s = sessions.get(req.body.CallSid);
+  if (!s) return res.sendStatus(200);
+
+  const partial = (req.body.UnstableSpeechResult || "").trim();
+  if (partial) s.lastPartialAt = Date.now();
+
+  res.sendStatus(200);
+});
+
+/* ======================
+   LISTEN (FINAL – STABLE)
 ====================== */
 app.post("/listen", async (req, res) => {
   try {
@@ -434,17 +532,12 @@ app.post("/listen", async (req, res) => {
     }
 
     const raw = normalizeUserText(req.body.SpeechResult || "");
-    
-    console.log(`[${s.sid}] User said: "${raw}" (State: ${s.state})`);
 
-    // Log user input
-    if (raw) {
-      s.userTexts.push(raw);
-      s.conversationFlow.push(`User: ${raw}`);
-    }
-
-    // Priority 1: Check for busy intent at intro
+    // Priority 1: Busy Intent Detection
     if (s.state === STATES.INTRO && isBusyIntent(raw)) {
+      s.conversationFlow.push(`User: ${raw}`);
+      if (raw) s.userTexts.push(raw);
+
       const next = STATES.CALLBACK_TIME;
       s.state = next;
       s.unclearCount = 0;
@@ -453,17 +546,15 @@ app.post("/listen", async (req, res) => {
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
 
-      console.log(`[${s.sid}] Busy detected → Callback time`);
-
       return res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${next}.mp3</Play>
-  <Gather input="speech" language="gu-IN" timeout="10" speechTimeout="auto" action="${BASE_URL}/listen"/>
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" action="${BASE_URL}/listen"/>
 </Response>`);
     }
 
-    // Priority 2: Handle empty or very short input
-    if (!raw || raw.length < 2) {
+    // Priority 2: Invalid/Short Input
+    if (!raw || raw.length < 3) {
       s.unclearCount = (s.unclearCount || 0) + 1;
 
       const next = RULES.nextOnUnclear(s.unclearCount);
@@ -473,16 +564,17 @@ app.post("/listen", async (req, res) => {
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
 
-      console.log(`[${s.sid}] Empty/short input (count: ${s.unclearCount}) → ${next}`);
-
       return res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${next}.mp3</Play>
-  <Gather input="speech" language="gu-IN" timeout="10" speechTimeout="auto" action="${BASE_URL}/listen"/>
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" action="${BASE_URL}/listen"/>
 </Response>`);
     }
 
-    // Determine next state based on conversation flow
+    // Normal Flow
+    s.conversationFlow.push(`User: ${raw}`);
+    if (raw) s.userTexts.push(raw);
+
     let next;
 
     if (s.state === STATES.INTRO) {
@@ -514,9 +606,7 @@ app.post("/listen", async (req, res) => {
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
 
-    console.log(`[${s.sid}] Next state: ${next}`);
-
-    // Check if this is an ending state
+    // Check if conversation should end
     if (RESPONSES[next]?.end) {
       s.result = next;
       s.endTime = Date.now();
@@ -530,20 +620,18 @@ app.post("/listen", async (req, res) => {
 
       sessions.delete(s.sid);
 
-      console.log(`[${s.sid}] Call ending with result: ${s.result}`);
-
       return res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${next}.mp3</Play>
+  <Say language="gu-IN">${responseText}</Say>
   <Hangup/>
 </Response>`);
     }
 
-    // Continue conversation - AI speaks, then waits for user
+    // Continue conversation
     return res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${next}.mp3</Play>
-  <Gather input="speech" language="gu-IN" timeout="10" speechTimeout="auto" action="${BASE_URL}/listen"/>
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" partialResultCallback="${BASE_URL}/partial" action="${BASE_URL}/listen"/>
 </Response>`);
 
   } catch (err) {
@@ -570,7 +658,6 @@ app.post("/call-status", async (req, res) => {
       }
 
       sessions.delete(s.sid);
-      console.log(`[${s.sid}] Call completed/abandoned`);
     }
 
     res.sendStatus(200);
@@ -593,35 +680,52 @@ app.get("/health", (req, res) => {
 });
 
 /* ======================
-   CAMPAIGN ENDPOINTS
+   CAMPAIGN FETCH
 ====================== */
 app.get("/internal/campaign/:id", async (req, res) => {
   try {
     const campaign = await getCampaignById(req.params.id);
+
     if (!campaign) {
       return res.status(404).json({ error: "campaign_not_found" });
     }
-    res.json({ success: true, campaign });
+
+    res.json({
+      success: true,
+      campaign
+    });
   } catch (err) {
     console.error("Get campaign error:", err.message);
     res.status(500).json({ error: "internal_error" });
   }
 });
 
+/* ======================
+   CAMPAIGN PREVIEW
+====================== */
 app.post("/internal/campaign/preview", async (req, res) => {
   try {
     const { text } = req.body;
+
     if (!text) {
       return res.status(400).json({ error: "text is required" });
     }
+
     const plan = await planFromText(text);
-    res.json({ success: true, campaign: plan });
+
+    res.json({
+      success: true,
+      campaign: plan
+    });
   } catch (err) {
     console.error("Campaign preview error:", err.message);
     res.status(500).json({ error: "planner_failed", message: err.message });
   }
 });
 
+/* ======================
+   CAMPAIGN FROM SOURCE
+====================== */
 app.post("/internal/campaign/from-source", async (req, res) => {
   try {
     const { type, payload } = req.body;
@@ -631,6 +735,7 @@ app.post("/internal/campaign/from-source", async (req, res) => {
     }
 
     let text;
+
     if (type === "text") {
       text = await loadFromText(payload.text);
     } else if (type === "url") {
@@ -645,7 +750,10 @@ app.post("/internal/campaign/from-source", async (req, res) => {
       return res.status(400).json({ error: "failed to extract text" });
     }
 
+    // Build campaign
     const campaign = await planFromText(text);
+
+    // Save to database
     const saved = await createCampaign({
       source_type: type,
       source_payload: payload,
@@ -679,7 +787,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, async () => {
   try {
     await preloadAll();
-    console.log("✅ Gujarati AI Voice Agent – AI SPEAKS FIRST MODE");
+    console.log("✅ Gujarati AI Voice Agent – RUNNING");
     console.log(`✅ Port: ${PORT}`);
     console.log(`✅ Base URL: ${BASE_URL}`);
     console.log(`✅ Audio files preloaded`);
