@@ -717,7 +717,11 @@ app.post("/listen", async (req, res) => {
        s.dynamicResponses?.[STATES.CONFIRM_END]?.text ||
        RESPONSES[STATES.CONFIRM_END].text;
    
-     const audioFile = await ensureAudio(STATES.CONFIRM_END, text);
+     const audioFile = await ensureAudio(
+       s.campaignKey || "default",
+       next,
+       text
+     );
    
      return res.type("text/xml").send(`
    <Response>
