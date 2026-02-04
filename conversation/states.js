@@ -11,7 +11,9 @@ export const STATES = {
   PROBLEM_RECORDED: "problem_recorded",
   ESCALATE: "escalate",
 
-  // 🔹 NEW STATES
   CALLBACK_TIME: "callback_time",
-  CALLBACK_CONFIRM: "callback_confirm"
+  CALLBACK_CONFIRM: "callback_confirm",
+  CONFIRM_END: "confirm_end"
+
 };
+
