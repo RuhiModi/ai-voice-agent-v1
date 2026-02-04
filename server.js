@@ -497,7 +497,6 @@ app.post("/answer", (req, res) => {
     const responseText =
       (s.dynamicResponses && s.dynamicResponses[STATES.INTRO]?.text)
       || RESPONSES[STATES.INTRO].text;
-      || "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
 
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
