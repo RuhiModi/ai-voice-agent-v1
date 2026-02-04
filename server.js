@@ -83,11 +83,21 @@ app.use("/audio", express.static(AUDIO_DIR));
 const sessions = new Map();
 
 /* ======================
+   AUDIO STATIC SERVICE
+====================== */
+const AUDIO_DIR = path.join(__dirname, "audio");
+
+if (!fs.existsSync(AUDIO_DIR)) {
+  fs.mkdirSync(AUDIO_DIR);
+}
+
+app.use("/audio", express.static(AUDIO_DIR));
+
+/* ======================
    AUDIO CACHE
 ====================== */
-async function generateAudio(text, file) {
-  const filePath = path.join(AUDIO_DIR, file);
-  if (fs.existsSync(filePath)) return;
+async function generateAudio(text, filename) {
+  const filePath = path.join(AUDIO_DIR, filename);
 
   const [res] = await ttsClient.synthesizeSpeech({
     input: { text },
@@ -98,11 +108,17 @@ async function generateAudio(text, file) {
   fs.writeFileSync(filePath, res.audioContent);
 }
 
-async function preloadAll() {
-  for (const key in RESPONSES) {
-    await generateAudio(RESPONSES[key].text, `${key}.mp3`);
+async function ensureAudio(state, text) {
+  const filename = `${state}.mp3`;
+  const filePath = path.join(AUDIO_DIR, filename);
+
+  if (!fs.existsSync(filePath)) {
+    await generateAudio(text, filename);
   }
+
+  return filename;
 }
+
 
 /* ======================
    TIME HELPERS
@@ -511,15 +527,12 @@ app.post("/answer", async (req, res) => {
     speechTimeout="auto"
     action="${BASE_URL}/listen"
   />
-</Response>
-`);
+</Response>`);
   } catch (err) {
-    console.error("Error in /answer:", err.message);
+    console.error("Error in /answer:", err);
     return res.type("text/xml").send("<Response><Hangup/></Response>");
   }
 });
-
-
 
 /* ======================
    PARTIAL BUFFER
