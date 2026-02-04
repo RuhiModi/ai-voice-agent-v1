@@ -104,27 +104,6 @@ async function preloadAll() {
   }
 }
 
-//new generate Audio Function
-
-async function ensureAudio(state, text) {
-  const filename = `${state}.mp3`;
-  const filePath = path.join(AUDIO_DIR, filename);
-
-  if (fs.existsSync(filePath)) {
-    return filename;
-  }
-
-  const [res] = await ttsClient.synthesizeSpeech({
-    input: { text },
-    voice: { languageCode: "gu-IN", name: "gu-IN-Standard-A" },
-    audioConfig: { audioEncoding: "MP3" }
-  });
-
-  fs.writeFileSync(filePath, res.audioContent);
-  return filename;
-}
-
-
 /* ======================
    TIME HELPERS
 ====================== */
