@@ -104,6 +104,27 @@ async function preloadAll() {
   }
 }
 
+//new generate Audio Function
+
+async function ensureAudio(state, text) {
+  const filename = `${state}.mp3`;
+  const filePath = path.join(AUDIO_DIR, filename);
+
+  if (fs.existsSync(filePath)) {
+    return filename;
+  }
+
+  const [res] = await ttsClient.synthesizeSpeech({
+    input: { text },
+    voice: { languageCode: "gu-IN", name: "gu-IN-Standard-A" },
+    audioConfig: { audioEncoding: "MP3" }
+  });
+
+  fs.writeFileSync(filePath, res.audioContent);
+  return filename;
+}
+
+
 /* ======================
    TIME HELPERS
 ====================== */
@@ -483,22 +504,23 @@ app.post("/bulk-call", async (req, res) => {
 /* ======================
    ANSWER (Twilio Webhook)
 ====================== */
-app.post("/answer", (req, res) => {
+app.post("/answer", async (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
-
     if (!s) {
       return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
 
-    // Lock intro state once
     s.state = STATES.INTRO;
 
-    // AUDIO FILE NAME (preloaded)
-    const audioFile = `${STATES.INTRO}.mp3`;
+    const text =
+      s.dynamicResponses?.[STATES.INTRO]?.text ||
+      RESPONSES[STATES.INTRO].text;
 
-    s.agentTexts.push(RESPONSES[STATES.INTRO].text);
-    s.conversationFlow.push(`AI: ${RESPONSES[STATES.INTRO].text}`);
+    const audioFile = await ensureAudio(STATES.INTRO, text);
+
+    s.agentTexts.push(text);
+    s.conversationFlow.push(`AI: ${text}`);
 
     return res.type("text/xml").send(`
 <Response>
@@ -510,12 +532,14 @@ app.post("/answer", (req, res) => {
     speechTimeout="auto"
     action="${BASE_URL}/listen"
   />
-</Response>`);
+</Response>
+`);
   } catch (err) {
     console.error("Error in /answer:", err.message);
     return res.type("text/xml").send("<Response><Hangup/></Response>");
   }
 });
+
 
 
 /* ======================
