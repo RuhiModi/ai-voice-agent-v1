@@ -819,11 +819,11 @@ app.get("/debug/audio", (req, res) => {
 ====================== */
 app.listen(PORT, async () => {
   try {
-    await preloadAll();
     console.log("✅ Gujarati AI Voice Agent – RUNNING");
     console.log(`✅ Port: ${PORT}`);
     console.log(`✅ Base URL: ${BASE_URL}`);
     console.log(`✅ Audio files preloaded`);
+    console.log(`✅ Audio generation: dynamic (on-demand)`);
     console.log(`✅ Active sessions: ${sessions.size}`);
   } catch (error) {
     console.error("❌ Error starting server:", error.message);
