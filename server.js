@@ -517,6 +517,10 @@ app.post("/answer", async (req, res) => {
     if (!s) {
       return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
+     if (!s.campaignKey) {
+       s.campaignKey = "default";
+     }
+
 
     s.state = STATES.INTRO;
 
@@ -525,7 +529,12 @@ app.post("/answer", async (req, res) => {
       RESPONSES[STATES.INTRO]?.text ||
       "નમસ્કાર, હું આપને માહિતી આપવા માટે કોલ કરી રહ્યો છું.";
 
-    const audioFile = await ensureAudio(STATES.INTRO, text);
+    const audioFile = await ensureAudio(
+     s.campaignKey || "default",
+     STATES.INTRO,
+     text
+   );
+
 
     s.agentTexts.push(text);
     s.conversationFlow.push(`AI: ${text}`);
