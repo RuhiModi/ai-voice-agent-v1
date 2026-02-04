@@ -70,21 +70,12 @@ const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 /* ======================
    FILE SYSTEM
 ====================== */
+/* ======================
+   FILE SYSTEM
+====================== */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const AUDIO_DIR = path.join(__dirname, "audio");
 
-if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR);
-app.use("/audio", express.static(AUDIO_DIR));
-
-/* ======================
-   SESSION MEMORY
-====================== */
-const sessions = new Map();
-
-/* ======================
-   AUDIO STATIC SERVICE
-====================== */
 const AUDIO_DIR = path.join(__dirname, "audio");
 
 if (!fs.existsSync(AUDIO_DIR)) {
@@ -92,6 +83,12 @@ if (!fs.existsSync(AUDIO_DIR)) {
 }
 
 app.use("/audio", express.static(AUDIO_DIR));
+
+
+/* ======================
+   SESSION MEMORY
+====================== */
+const sessions = new Map();
 
 /* ======================
    AUDIO CACHE
