@@ -490,23 +490,33 @@ app.post("/answer", (req, res) => {
       return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
 
-    s.state = STATES.INTRO;
+    if (!s.state) {
+      s.state = STATES.INTRO;
+    }
 
-    const text = s.dynamicResponses?.[STATES.INTRO]?.text || RESPONSES[STATES.INTRO].text;
+    const responseText =
+      (s.dynamicResponses && s.dynamicResponses[STATES.INTRO]?.text)
+      || RESPONSES[STATES.INTRO].text;
+      || "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
 
-    s.agentTexts.push(text);
-    s.conversationFlow.push(`AI: ${text}`);
+    s.agentTexts.push(responseText);
+    s.conversationFlow.push(`AI: ${responseText}`);
 
-    res.type("text/xml").send(`
+    return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${text}</Say>
-  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" action="${BASE_URL}/listen"/>
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather input="speech"
+          language="gu-IN"
+          timeout="15"
+          speechTimeout="auto"
+          action="${BASE_URL}/listen"/>
 </Response>`);
   } catch (e) {
     console.error("Error in /answer:", e.message);
-    res.type("text/xml").send("<Response><Hangup/></Response>");
+    return res.type("text/xml").send("<Response><Hangup/></Response>");
   }
 });
+
 
 /* ======================
    PARTIAL BUFFER
@@ -524,6 +534,16 @@ app.post("/partial", (req, res) => {
 /* ======================
    LISTEN (FINAL – STABLE)
 ====================== */
+const s = sessions.get(req.body.CallSid);
+if (!s) {
+  return res.type("text/xml").send("<Response><Hangup/></Response>");
+}
+
+if (!s.state) {
+  s.state = STATES.INTRO;
+}
+
+
 app.post("/listen", async (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
@@ -542,7 +562,11 @@ app.post("/listen", async (req, res) => {
       s.state = next;
       s.unclearCount = 0;
 
-      const responseText = s.dynamicResponses?.[next]?.text || RESPONSES[next].text;
+      const responseText =
+       (s.dynamicResponses && s.dynamicResponses[next]?.text)
+       || RESPONSES[next]?.text
+       || "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
 
@@ -560,7 +584,11 @@ app.post("/listen", async (req, res) => {
       const next = RULES.nextOnUnclear(s.unclearCount);
       s.state = next;
 
-      const responseText = s.dynamicResponses?.[next]?.text || RESPONSES[next].text;
+      const responseText =
+       (s.dynamicResponses && s.dynamicResponses[next]?.text)
+       || RESPONSES[next]?.text
+       || "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
 
@@ -602,7 +630,11 @@ app.post("/listen", async (req, res) => {
 
     s.state = next;
 
-    const responseText = s.dynamicResponses?.[next]?.text || RESPONSES[next].text;
+    const responseText =
+     (s.dynamicResponses && s.dynamicResponses[next]?.text)
+     || RESPONSES[next]?.text
+     || "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
 
@@ -756,7 +788,7 @@ app.post("/internal/campaign/from-source", async (req, res) => {
     // Save to database
     const saved = await createCampaign({
       source_type: type,
-      source_payload: payload,
+      source_payload: JSON.stringify(payload),
       campaign_json: campaign
     });
 
