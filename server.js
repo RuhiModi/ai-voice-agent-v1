@@ -108,15 +108,18 @@ async function generateAudio(text, filename) {
 
   fs.writeFileSync(filePath, res.audioContent);
 }
-
-async function ensureAudio(state, text) {
-  // 🛑 HARD SAFETY
-  if (!text || typeof text !== "string" || !text.trim()) {
-    console.warn("⚠️ Skipping TTS, empty text for state:", state);
-    return "intro.mp3"; // SAFE fallback audio
+async function ensureAudio(campaignKey, state, text) {
+  if (!state) {
+    console.warn("⚠️ Missing state, forcing hangup audio");
+    return "fallback.mp3";
   }
 
-  const filename = `${state}.mp3`;
+  if (!text || typeof text !== "string" || !text.trim()) {
+    console.warn(`⚠️ Empty text for ${campaignKey}:${state}`);
+    return "fallback.mp3";
+  }
+
+  const filename = `${campaignKey}_${state}.mp3`;
   const filePath = path.join(AUDIO_DIR, filename);
 
   if (!fs.existsSync(filePath)) {
@@ -125,7 +128,6 @@ async function ensureAudio(state, text) {
 
   return filename;
 }
-
 
 /* ======================
    TIME HELPERS
@@ -520,8 +522,8 @@ app.post("/answer", async (req, res) => {
 
     const text =
       s.dynamicResponses?.[STATES.INTRO]?.text ||
-      RESPONSES[STATES.INTRO].text;
-     "નમસ્કાર, હું આપને માહિતી આપવા માટે કોલ કરી રહ્યો છું.";
+      RESPONSES[STATES.INTRO]?.text ||
+      "નમસ્કાર, હું આપને માહિતી આપવા માટે કોલ કરી રહ્યો છું.";
 
     const audioFile = await ensureAudio(STATES.INTRO, text);
 
@@ -588,8 +590,9 @@ app.post("/listen", async (req, res) => {
 
       const text =
         s.dynamicResponses?.[next]?.text ||
-        RESPONSES[next].text;
-       "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+        RESPONSES[next]?.text ||
+        "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+
       
       s.agentTexts.push(text);
       s.conversationFlow.push(`AI: ${text}`);
@@ -627,8 +630,9 @@ app.post("/listen", async (req, res) => {
 
       const text =
         s.dynamicResponses?.[next]?.text ||
-        RESPONSES[next].text;
-       "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+        RESPONSES[next]?.text ||
+        "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+
 
       s.agentTexts.push(text);
       s.conversationFlow.push(`AI: ${text}`);
@@ -675,10 +679,11 @@ app.post("/listen", async (req, res) => {
 
     s.state = next;
 
-    const text =
-      s.dynamicResponses?.[next]?.text ||
-      RESPONSES[next].text;
+   const text =
+     s.dynamicResponses?.[next]?.text ||
+     RESPONSES[next]?.text ||
      "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+
 
     s.agentTexts.push(text);
     s.conversationFlow.push(`AI: ${text}`);
