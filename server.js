@@ -555,18 +555,31 @@ app.post("/partial", (req, res) => {
   res.sendStatus(200);
 });
 
+//Listen helper
+
+async function ensureAudio(state, text) {
+  const file = `${state}.mp3`;
+  const filePath = path.join(AUDIO_DIR, file);
+
+  if (!fs.existsSync(filePath)) {
+    await generateAudio(text, file);
+  }
+
+  return file;
+}
+
+
 /* ======================
    LISTEN (FINAL – STABLE)
 ====================== */
 app.post("/listen", async (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
-
     if (!s) {
       return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
 
-    // 🔒 Ensure state always exists
+    // Ensure state always exists
     if (!s.state) {
       s.state = STATES.INTRO;
     }
@@ -578,25 +591,31 @@ app.post("/listen", async (req, res) => {
     ====================== */
     if (s.state === STATES.INTRO && isBusyIntent(raw)) {
       s.conversationFlow.push(`User: ${raw}`);
-      if (raw) s.userTexts.push(raw);
+      s.userTexts.push(raw);
 
-      s.state = STATES.CALLBACK_TIME;
+      const next = STATES.CALLBACK_TIME;
+      s.state = next;
       s.unclearCount = 0;
 
-      const responseText =
-        s.dynamicResponses?.[STATES.CALLBACK_TIME]?.text ||
-        RESPONSES[STATES.CALLBACK_TIME].text;
+      const text =
+        s.dynamicResponses?.[next]?.text ||
+        RESPONSES[next].text;
 
-      s.agentTexts.push(responseText);
-      s.conversationFlow.push(`AI: ${responseText}`);
+      s.agentTexts.push(text);
+      s.conversationFlow.push(`AI: ${text}`);
+
+      const audioFile = await ensureAudio(next, text);
 
       return res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${next}.mp3</Play>
-  <Gather input="speech" language="gu-IN"
+  <Play>${BASE_URL}/audio/${audioFile}</Play>
+  <Gather
+    input="speech"
+    language="gu-IN"
     timeout="15"
     speechTimeout="auto"
-    action="${BASE_URL}/listen"/>
+    action="${BASE_URL}/listen"
+  />
 </Response>`);
     }
 
@@ -609,20 +628,25 @@ app.post("/listen", async (req, res) => {
       const next = RULES.nextOnUnclear(s.unclearCount);
       s.state = next;
 
-      const responseText =
+      const text =
         s.dynamicResponses?.[next]?.text ||
         RESPONSES[next].text;
 
-      s.agentTexts.push(responseText);
-      s.conversationFlow.push(`AI: ${responseText}`);
+      s.agentTexts.push(text);
+      s.conversationFlow.push(`AI: ${text}`);
+
+      const audioFile = await ensureAudio(next, text);
 
       return res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${next}.mp3</Play>
-  <Gather input="speech" language="gu-IN"
+  <Play>${BASE_URL}/audio/${audioFile}</Play>
+  <Gather
+    input="speech"
+    language="gu-IN"
     timeout="15"
     speechTimeout="auto"
-    action="${BASE_URL}/listen"/>
+    action="${BASE_URL}/listen"
+  />
 </Response>`);
     }
 
@@ -633,7 +657,6 @@ app.post("/listen", async (req, res) => {
     s.userTexts.push(raw);
 
     let next;
-
     if (s.state === STATES.INTRO) {
       next = STATES.TASK_CHECK;
     } else {
@@ -647,12 +670,14 @@ app.post("/listen", async (req, res) => {
 
     s.state = next;
 
-    const responseText =
+    const text =
       s.dynamicResponses?.[next]?.text ||
       RESPONSES[next].text;
 
-    s.agentTexts.push(responseText);
-    s.conversationFlow.push(`AI: ${responseText}`);
+    s.agentTexts.push(text);
+    s.conversationFlow.push(`AI: ${text}`);
+
+    const audioFile = await ensureAudio(next, text);
 
     /* ======================
        END STATE
@@ -660,15 +685,11 @@ app.post("/listen", async (req, res) => {
     if (RESPONSES[next]?.end) {
       s.result = next;
       s.endTime = Date.now();
-
-      await logToSheet(s);
-      s.hasLogged = true;
-
       sessions.delete(s.sid);
 
       return res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${next}.mp3</Play>
+  <Play>${BASE_URL}/audio/${audioFile}</Play>
   <Hangup/>
 </Response>`);
     }
@@ -678,43 +699,19 @@ app.post("/listen", async (req, res) => {
     ====================== */
     return res.type("text/xml").send(`
 <Response>
-  <Play>${BASE_URL}/audio/${next}.mp3</Play>
-  <Gather input="speech" language="gu-IN"
+  <Play>${BASE_URL}/audio/${audioFile}</Play>
+  <Gather
+    input="speech"
+    language="gu-IN"
     timeout="15"
     speechTimeout="auto"
-    action="${BASE_URL}/listen"/>
+    action="${BASE_URL}/listen"
+  />
 </Response>`);
 
   } catch (err) {
     console.error("Error in /listen:", err);
     return res.type("text/xml").send("<Response><Hangup/></Response>");
-  }
-});
-
-/* ======================
-   CALL STATUS
-====================== */
-app.post("/call-status", async (req, res) => {
-  try {
-    const s = sessions.get(req.body.CallSid);
-
-    if (s && !s.hasLogged) {
-      s.result = s.result || "abandoned";
-      s.endTime = Date.now();
-      await logToSheet(s);
-      s.hasLogged = true;
-
-      if (s.batchId) {
-        await updateBulkByCallSid(req.body.CallSid, "Completed");
-      }
-
-      sessions.delete(s.sid);
-    }
-
-    res.sendStatus(200);
-  } catch (error) {
-    console.error("Error in /call-status:", error.message);
-    res.sendStatus(200);
   }
 });
 
