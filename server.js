@@ -39,6 +39,13 @@ app.use(bodyParser.json());
 const PORT = process.env.PORT || 10000;
 const BASE_URL = process.env.BASE_URL;
 
+const TERMINAL_STATES = new Set([
+  STATES.TASK_DONE,
+  STATES.ESCALATE,
+  STATES.PROBLEM_RECORDED
+]);
+
+
 /* ======================
    TWILIO
 ====================== */
@@ -687,17 +694,29 @@ app.post("/listen", async (req, res) => {
     /* ======================
        END STATE
     ====================== */
-    if (RESPONSES[next]?.end) {
-      s.result = next;
-      s.endTime = Date.now();
-      sessions.delete(s.sid);
-
-      return res.type("text/xml").send(`
-<Response>
-  <Play>${BASE_URL}/audio/${audioFile}</Play>
-  <Hangup/>
-</Response>`);
-    }
+    // 🔐 Phase 6: DO NOT END IMMEDIATELY
+   if (TERMINAL_STATES.has(next)) {
+     s.pendingEndState = next;
+     s.state = STATES.CONFIRM_END;
+   
+     const text =
+       s.dynamicResponses?.[STATES.CONFIRM_END]?.text ||
+       RESPONSES[STATES.CONFIRM_END].text;
+   
+     const audioFile = await ensureAudio(STATES.CONFIRM_END, text);
+   
+     return res.type("text/xml").send(`
+   <Response>
+     <Play>${BASE_URL}/audio/${audioFile}</Play>
+     <Gather
+       input="speech"
+       language="gu-IN"
+       timeout="15"
+       speechTimeout="auto"
+       action="${BASE_URL}/listen"
+     />
+   </Response>`);
+   }
 
     /* ======================
        CONTINUE
