@@ -491,19 +491,18 @@ app.post("/answer", (req, res) => {
       return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
 
-    // INTRO only — NO next here
+    // Lock intro state once
     s.state = STATES.INTRO;
 
-    const text =
-      s.dynamicResponses?.[STATES.INTRO]?.text ||
-      RESPONSES[STATES.INTRO].text;
+    // AUDIO FILE NAME (preloaded)
+    const audioFile = `${STATES.INTRO}.mp3`;
 
-    s.agentTexts.push(text);
-    s.conversationFlow.push(`AI: ${text}`);
+    s.agentTexts.push(RESPONSES[STATES.INTRO].text);
+    s.conversationFlow.push(`AI: ${RESPONSES[STATES.INTRO].text}`);
 
     return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${text}</Say>
+  <Play>${BASE_URL}/audio/${audioFile}</Play>
   <Gather
     input="speech"
     language="gu-IN"
@@ -517,6 +516,7 @@ app.post("/answer", (req, res) => {
     return res.type("text/xml").send("<Response><Hangup/></Response>");
   }
 });
+
 
 /* ======================
    PARTIAL BUFFER
@@ -568,7 +568,7 @@ app.post("/listen", async (req, res) => {
 
       return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${responseText}</Say>
+  <Play>${BASE_URL}/audio/${next}.mp3</Play>
   <Gather input="speech" language="gu-IN"
     timeout="15"
     speechTimeout="auto"
@@ -594,7 +594,7 @@ app.post("/listen", async (req, res) => {
 
       return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${responseText}</Say>
+  <Play>${BASE_URL}/audio/${next}.mp3</Play>
   <Gather input="speech" language="gu-IN"
     timeout="15"
     speechTimeout="auto"
@@ -644,7 +644,7 @@ app.post("/listen", async (req, res) => {
 
       return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${responseText}</Say>
+  <Play>${BASE_URL}/audio/${next}.mp3</Play>
   <Hangup/>
 </Response>`);
     }
@@ -654,7 +654,7 @@ app.post("/listen", async (req, res) => {
     ====================== */
     return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${responseText}</Say>
+  <Play>${BASE_URL}/audio/${next}.mp3</Play>
   <Gather input="speech" language="gu-IN"
     timeout="15"
     speechTimeout="auto"
