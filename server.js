@@ -70,9 +70,6 @@ const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 /* ======================
    FILE SYSTEM
 ====================== */
-/* ======================
-   FILE SYSTEM
-====================== */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -92,6 +89,9 @@ const sessions = new Map();
 
 /* ======================
    AUDIO CACHE
+====================== */
+/* ======================
+   AUDIO CACHE (KEEP THIS)
 ====================== */
 async function generateAudio(text, filename) {
   const filePath = path.join(AUDIO_DIR, filename);
@@ -115,7 +115,6 @@ async function ensureAudio(state, text) {
 
   return filename;
 }
-
 
 /* ======================
    TIME HELPERS
@@ -543,26 +542,6 @@ app.post("/partial", (req, res) => {
 
   res.sendStatus(200);
 });
-
-//Listen helper
-
-async function ensureAudio(state, text) {
-  if (!state) {
-    console.warn("⚠️ ensureAudio called with invalid state:", state);
-    return "intro.mp3"; // SAFE FALLBACK
-  }
-
-  const file = `${state}.mp3`;
-  const filePath = path.join(AUDIO_DIR, file);
-
-  if (!fs.existsSync(filePath)) {
-    await generateAudio(text, file);
-  }
-
-  return file;
-}
-
-
 
 /* ======================
    LISTEN (FINAL – STABLE)
