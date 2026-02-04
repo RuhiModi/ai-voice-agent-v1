@@ -105,8 +105,8 @@ async function generateAudio(text, filename) {
   fs.writeFileSync(filePath, res.audioContent);
 }
 
-async function ensureAudio(state, text) {
-  const filename = `${state}.mp3`;
+async function ensureAudio(campaignKey, state, text) {
+  const filename = `${campaignKey}_${state}.mp3`;
   const filePath = path.join(AUDIO_DIR, filename);
 
   if (!fs.existsSync(filePath)) {
@@ -378,7 +378,7 @@ app.post("/call", async (req, res) => {
       campaign = record.campaign;
       dynamicResponses = mapCampaignToConversation(campaign);
     }
-
+    const campaignKey = campaignId ? `cmp_${campaignId}` : "default";
     const call = await twilioClient.calls.create({
       to,
       from: process.env.TWILIO_FROM_NUMBER,
@@ -390,6 +390,7 @@ app.post("/call", async (req, res) => {
 
     sessions.set(call.sid, {
       sid: call.sid,
+      campaignKey,  
       userPhone: to,
       startTime: Date.now(),
       endTime: null,
@@ -443,6 +444,7 @@ app.post("/bulk-call", async (req, res) => {
     phones.forEach((phone, index) => {
       setTimeout(async () => {
         try {
+          const campaignKey = campaignId ? `cmp_${campaignId}` : "default";
           const call = await twilioClient.calls.create({
             to: phone,
             from: process.env.TWILIO_FROM_NUMBER,
@@ -456,6 +458,7 @@ app.post("/bulk-call", async (req, res) => {
 
           sessions.set(call.sid, {
             sid: call.sid,
+            campaignKey,
             userPhone: phone,
             batchId,
             startTime: Date.now(),
@@ -578,7 +581,14 @@ app.post("/listen", async (req, res) => {
       s.agentTexts.push(text);
       s.conversationFlow.push(`AI: ${text}`);
 
-      const audioFile = await ensureAudio(next, text);
+     // const audioFile = await ensureAudio(next, text);
+
+       const audioFile = await ensureAudio(
+        s.campaignKey,
+        next,
+        text
+      );
+
 
       return res.type("text/xml").send(`
 <Response>
@@ -609,7 +619,14 @@ app.post("/listen", async (req, res) => {
       s.agentTexts.push(text);
       s.conversationFlow.push(`AI: ${text}`);
 
-      const audioFile = await ensureAudio(next, text);
+      //const audioFile = await ensureAudio(next, text);
+
+       const audioFile = await ensureAudio(
+        s.campaignKey,
+        next,
+        text
+      );
+
 
       return res.type("text/xml").send(`
 <Response>
@@ -651,7 +668,13 @@ app.post("/listen", async (req, res) => {
     s.agentTexts.push(text);
     s.conversationFlow.push(`AI: ${text}`);
 
-    const audioFile = await ensureAudio(next, text);
+    //const audioFile = await ensureAudio(next, text);
+     const audioFile = await ensureAudio(
+       s.campaignKey,
+       next,
+       text
+     );
+
 
     /* ======================
        END STATE
