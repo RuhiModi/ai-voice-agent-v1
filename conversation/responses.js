@@ -1,3 +1,5 @@
+import { STATES } from "./states.js";
+
 export const RESPONSES = {
   intro: {
     text: "નમસ્તે, હું દરિયાપુરના ધારાસભ્ય કૌશિક જૈનના ઇ-કાર્યાલય તરફથી બોલું છું. શું હું આપનો થોડો સમય લઈ શકું?",
@@ -47,7 +49,8 @@ export const RESPONSES = {
   callback_confirm: {
     text: "આભાર. આપનો સમય આપવા બદલ ધન્યવાદ. અમારી ટીમ આપને જણાવેલા સમયે સંપર્ક કરશે.",
     end: true
-  }
+  },
+  
   [STATES.CONFIRM_END]: {
   text: "શું આપને બીજી કોઈ મદદ જોઈએ છે?",
   end: false
