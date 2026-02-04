@@ -26,7 +26,6 @@ import { mapCampaignToConversation } from "./conversation/mapper/campaignToConve
 import { createCampaign } from "./db/campaigns.js";
 import { getCampaignById } from "./db/campaigns.js";
 
-
 dotenv.config();
 
 /* ======================
@@ -381,14 +380,19 @@ app.post("/call", async (req, res) => {
       sid: call.sid,
       userPhone: to,
       startTime: Date.now(),
+      endTime: null,
+      callbackTime: null,
       state: STATES.INTRO,
       campaign,
       dynamicResponses,
       agentTexts: [],
       userTexts: [],
+      userBuffer: [],
       conversationFlow: [],
       unclearCount: 0,
-      hasLogged: false
+      confidenceScore: 0,
+      hasLogged: false,
+      result: ""
     });
 
     res.json({ status: "calling", callSid: call.sid, hasCampaign: !!campaign });
@@ -443,16 +447,19 @@ app.post("/bulk-call", async (req, res) => {
             userPhone: phone,
             batchId,
             startTime: Date.now(),
+            endTime: null,
+            callbackTime: null,
             state: STATES.INTRO,
-
             campaign,
             dynamicResponses,
-
             agentTexts: [],
             userTexts: [],
+            userBuffer: [],
             conversationFlow: [],
             unclearCount: 0,
-            hasLogged: false
+            confidenceScore: 0,
+            hasLogged: false,
+            result: ""
           });
         } catch (e) {
           console.error("Bulk call failed:", phone, e.message);
@@ -485,9 +492,7 @@ app.post("/answer", (req, res) => {
 
     s.state = STATES.INTRO;
 
-    const text =
-      s.dynamicResponses?.[STATES.INTRO]?.text ||
-      RESPONSES[STATES.INTRO].text;
+    const text = s.dynamicResponses?.[STATES.INTRO]?.text || RESPONSES[STATES.INTRO].text;
 
     s.agentTexts.push(text);
     s.conversationFlow.push(`AI: ${text}`);
@@ -495,9 +500,10 @@ app.post("/answer", (req, res) => {
     res.type("text/xml").send(`
 <Response>
   <Say language="gu-IN">${text}</Say>
-  <Gather input="speech" language="gu-IN" action="${BASE_URL}/listen"/>
+  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" action="${BASE_URL}/listen"/>
 </Response>`);
   } catch (e) {
+    console.error("Error in /answer:", e.message);
     res.type("text/xml").send("<Response><Hangup/></Response>");
   }
 });
@@ -515,7 +521,6 @@ app.post("/partial", (req, res) => {
   res.sendStatus(200);
 });
 
-
 /* ======================
    LISTEN (FINAL – STABLE)
 ====================== */
@@ -527,182 +532,82 @@ app.post("/listen", async (req, res) => {
     }
 
     const raw = normalizeUserText(req.body.SpeechResult || "");
-    s.conversationFlow.push(`User: ${raw}`);
 
-    let next;
-
-    if (s.state === STATES.INTRO) {
-      next = STATES.TASK_CHECK;
-    } else {
-      const { status } = detectTaskStatus(raw);
-      if (status === "DONE") next = STATES.TASK_DONE;
-      else if (status === "PENDING") next = STATES.TASK_PENDING;
-      else next = STATES.ESCALATE;
-    }
-
-    s.state = next;
-
-    const text =
-      s.dynamicResponses?.[next]?.text ||
-      RESPONSES[next].text;
-
-    s.agentTexts.push(text);
-    s.conversationFlow.push(`AI: ${text}`);
-
-    if (RESPONSES[next]?.end) {
-      return res.type("text/xml").send(`
-<Response>
-  <Say language="gu-IN">${text}</Say>
-  <Hangup/>
-</Response>`);
-    }
-
-    res.type("text/xml").send(`
-<Response>
-  <Say language="gu-IN">${text}</Say>
-  <Gather input="speech" language="gu-IN" action="${BASE_URL}/listen"/>
-</Response>`);
-  } catch (err) {
-    console.error("listen error:", err);
-    res.type("text/xml").send("<Response><Hangup/></Response>");
-  }
-});
-
-    /* ======================
-       PRIORITY 1: BUSY INTENT
-  
+    // Priority 1: Busy Intent Detection
     if (s.state === STATES.INTRO && isBusyIntent(raw)) {
       s.conversationFlow.push(`User: ${raw}`);
+      if (raw) s.userTexts.push(raw);
 
       const next = STATES.CALLBACK_TIME;
       s.state = next;
       s.unclearCount = 0;
 
-      const responseText =
-        s.dynamicResponses?.[next]?.text ||
-        RESPONSES[next].text;
-
+      const responseText = s.dynamicResponses?.[next]?.text || RESPONSES[next].text;
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
 
       return res.type("text/xml").send(`
 <Response>
   <Say language="gu-IN">${responseText}</Say>
-  <Gather
-    input="speech"
-    language="gu-IN"
-    timeout="15"
-    speechTimeout="auto"
-    action="${BASE_URL}/listen"
-  />
-</Response>
-`);
+  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" action="${BASE_URL}/listen"/>
+</Response>`);
     }
-  ====================== */
-    /* ======================
-       PRIORITY 2: INVALID / SHORT INPUT
 
+    // Priority 2: Invalid/Short Input
     if (!raw || raw.length < 3) {
       s.unclearCount = (s.unclearCount || 0) + 1;
 
       const next = RULES.nextOnUnclear(s.unclearCount);
       s.state = next;
 
-      const responseText =
-        s.dynamicResponses?.[next]?.text ||
-        RESPONSES[next].text;
-
+      const responseText = s.dynamicResponses?.[next]?.text || RESPONSES[next].text;
       s.agentTexts.push(responseText);
       s.conversationFlow.push(`AI: ${responseText}`);
 
       return res.type("text/xml").send(`
 <Response>
   <Say language="gu-IN">${responseText}</Say>
-  <Gather
-    input="speech"
-    language="gu-IN"
-    timeout="15"
-    speechTimeout="auto"
-    action="${BASE_URL}/listen"
-  />
-</Response>
-`);
+  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" action="${BASE_URL}/listen"/>
+</Response>`);
     }
-  ====================== */
-    /* ======================
-       NORMAL FLOW
-    ====================== */
+
+    // Normal Flow
     s.conversationFlow.push(`User: ${raw}`);
+    if (raw) s.userTexts.push(raw);
 
     let next;
 
     if (s.state === STATES.INTRO) {
       next = STATES.TASK_CHECK;
+    } else if (s.state === STATES.CALLBACK_TIME) {
+      s.callbackTime = raw;
+      next = STATES.CALLBACK_CONFIRM;
+    } else if (s.state === STATES.TASK_PENDING) {
+      next = STATES.PROBLEM_RECORDED;
     } else {
-      const { status } = detectTaskStatus(raw);
+      const { status, confidence } = detectTaskStatus(raw);
+      s.confidenceScore = confidence;
 
-      if (status === "DONE") next = STATES.TASK_DONE;
-      else if (status === "PENDING") next = STATES.TASK_PENDING;
-      else next = STATES.ESCALATE;
+      if (status === "DONE") {
+        next = STATES.TASK_DONE;
+      } else if (status === "PENDING") {
+        next = STATES.TASK_PENDING;
+      } else {
+        s.unclearCount++;
+        if (s.unclearCount === 1) next = STATES.RETRY_TASK_CHECK;
+        else if (s.unclearCount === 2) next = STATES.CONFIRM_TASK;
+        else next = STATES.ESCALATE;
+      }
     }
 
     s.state = next;
 
-    const responseText =
-      s.dynamicResponses?.[next]?.text ||
-      RESPONSES[next].text;
-
-    s.agentTexts.push(responseText);
-    s.conversationFlow.push(`AI: ${responseText}`);
-
-    if (RESPONSES[next]?.end) {
-      return res.type("text/xml").send(`
-<Response>
-  <Say language="gu-IN">${responseText}</Say>
-  <Hangup/>
-</Response>
-`);
-    }
-
-    return res.type("text/xml").send(`
-<Response>
-  <Say language="gu-IN">${responseText}</Say>
-  <Gather
-    input="speech"
-    language="gu-IN"
-    timeout="15"
-    speechTimeout="auto"
-    action="${BASE_URL}/listen"
-  />
-</Response>
-`);
-  } catch (err) {
-    console.error("Error in /listen:", err.message);
-    return res.type("text/xml").send(`<Response><Hangup/></Response>`);
-  }
-});
-
-    /* ======================
-       FINAL USER TEXT FLUSH
-   
-    if (s.userBuffer.length) {
-      const combined = s.userBuffer.join(" ");
-      const last = s.userTexts[s.userTexts.length - 1];
-
-      if (combined && combined !== last) {
-        s.userTexts.push(combined);
-      }
-      s.userBuffer = [];
-    }
-
     const responseText = s.dynamicResponses?.[next]?.text || RESPONSES[next].text;
     s.agentTexts.push(responseText);
     s.conversationFlow.push(`AI: ${responseText}`);
- ====================== */
-    /* ======================
-       END STATE
-    ====================== */
-    if (RESPONSES[next].end) {
+
+    // Check if conversation should end
+    if (RESPONSES[next]?.end) {
       s.result = next;
       s.endTime = Date.now();
 
@@ -715,35 +620,22 @@ app.post("/listen", async (req, res) => {
 
       sessions.delete(s.sid);
 
-      return res.type("text/xml").send(
-        `<Response>
-         <Say language="gu-IN">
-          ${responseText}
-          </Say>
-          <Hangup/>
-        </Response>`
-      );
+      return res.type("text/xml").send(`
+<Response>
+  <Say language="gu-IN">${responseText}</Say>
+  <Hangup/>
+</Response>`);
     }
 
-    /* ======================
-       CONTINUE CONVERSATION
-    ====================== */
-    s.state = next;
-    return res.type("text/xml").send(
-      `<Response>
-        <Say language="gu-IN">
-         ${responseText}
-        </Say>
-        <Gather input="speech"
-          language="gu-IN"
-          timeout="15"
-          speechTimeout="auto"
-          partialResultCallback="${BASE_URL}/partial"
-          action="${BASE_URL}/listen"/>
-      </Response>`
-    );
-  } catch (error) {
-    console.error("Error in /listen:", error.message);
+    // Continue conversation
+    return res.type("text/xml").send(`
+<Response>
+  <Say language="gu-IN">${responseText}</Say>
+  <Gather input="speech" language="gu-IN" timeout="15" speechTimeout="auto" partialResultCallback="${BASE_URL}/partial" action="${BASE_URL}/listen"/>
+</Response>`);
+
+  } catch (err) {
+    console.error("Error in /listen:", err.message);
     return res.type("text/xml").send(`<Response><Hangup/></Response>`);
   }
 });
@@ -752,14 +644,28 @@ app.post("/listen", async (req, res) => {
    CALL STATUS
 ====================== */
 app.post("/call-status", async (req, res) => {
-  const s = sessions.get(req.body.CallSid);
-  if (s && !s.hasLogged) {
-    s.hasLogged = true;
-    sessions.delete(s.sid);
-  }
-  res.sendStatus(200);
-});
+  try {
+    const s = sessions.get(req.body.CallSid);
 
+    if (s && !s.hasLogged) {
+      s.result = s.result || "abandoned";
+      s.endTime = Date.now();
+      await logToSheet(s);
+      s.hasLogged = true;
+
+      if (s.batchId) {
+        await updateBulkByCallSid(req.body.CallSid, "Completed");
+      }
+
+      sessions.delete(s.sid);
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("Error in /call-status:", error.message);
+    res.sendStatus(200);
+  }
+});
 
 /* ======================
    HEALTH CHECK
@@ -776,15 +682,6 @@ app.get("/health", (req, res) => {
 /* ======================
    CAMPAIGN FETCH
 ====================== */
-app.get("/internal/campaign/:id", async (req, res) => {
-  const campaign = await getCampaignById(req.params.id);
-  if (!campaign) {
-    return res.status(404).json({ error: "campaign_not_found" });
-  }
-  res.json({ success: true, campaign });
-});
-
-//new compaign health check
 app.get("/internal/campaign/:id", async (req, res) => {
   try {
     const campaign = await getCampaignById(req.params.id);
@@ -853,10 +750,10 @@ app.post("/internal/campaign/from-source", async (req, res) => {
       return res.status(400).json({ error: "failed to extract text" });
     }
 
-    // 🧠 Build campaign
+    // Build campaign
     const campaign = await planFromText(text);
 
-    // 💾 SAVE TO DB (THIS WAS MISSING)
+    // Save to database
     const saved = await createCampaign({
       source_type: type,
       source_payload: payload,
@@ -876,7 +773,6 @@ app.post("/internal/campaign/from-source", async (req, res) => {
   }
 });
 
-
 /* ======================
    ERROR HANDLER
 ====================== */
@@ -895,6 +791,7 @@ app.listen(PORT, async () => {
     console.log(`✅ Port: ${PORT}`);
     console.log(`✅ Base URL: ${BASE_URL}`);
     console.log(`✅ Audio files preloaded`);
+    console.log(`✅ Active sessions: ${sessions.size}`);
   } catch (error) {
     console.error("❌ Error starting server:", error.message);
     process.exit(1);
