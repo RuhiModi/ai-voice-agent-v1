@@ -486,38 +486,37 @@ app.post("/bulk-call", async (req, res) => {
 app.post("/answer", (req, res) => {
   try {
     const s = sessions.get(req.body.CallSid);
+
     if (!s) {
       return res.type("text/xml").send("<Response><Hangup/></Response>");
     }
 
-    if (!s.state) {
-      s.state = STATES.INTRO;
-    }
+    // INTRO only — NO next here
+    s.state = STATES.INTRO;
 
-    const responseText = (
-     (s.dynamicResponses && s.dynamicResponses[next]?.text) ||
-     RESPONSES[next]?.text ||
-     "માફ કરશો, કૃપા કરીને ફરીથી કહો."
-   );
+    const text =
+      s.dynamicResponses?.[STATES.INTRO]?.text ||
+      RESPONSES[STATES.INTRO].text;
 
-    s.agentTexts.push(responseText);
-    s.conversationFlow.push(`AI: ${responseText}`);
+    s.agentTexts.push(text);
+    s.conversationFlow.push(`AI: ${text}`);
 
     return res.type("text/xml").send(`
 <Response>
-  <Say language="gu-IN">${responseText}</Say>
-  <Gather input="speech"
-          language="gu-IN"
-          timeout="15"
-          speechTimeout="auto"
-          action="${BASE_URL}/listen"/>
+  <Say language="gu-IN">${text}</Say>
+  <Gather
+    input="speech"
+    language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"
+  />
 </Response>`);
-  } catch (e) {
-    console.error("Error in /answer:", e.message);
+  } catch (err) {
+    console.error("Error in /answer:", err.message);
     return res.type("text/xml").send("<Response><Hangup/></Response>");
   }
 });
-
 
 /* ======================
    PARTIAL BUFFER
