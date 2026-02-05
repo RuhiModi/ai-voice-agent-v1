@@ -26,7 +26,7 @@ import { mapCampaignToConversation } from "./conversation/mapper/campaignToConve
 import { createCampaign } from "./db/campaigns.js";
 import { getCampaignById } from "./db/campaigns.js";
 import { isValidTransition } from "./conversation/stateGuards.js";
-import pool from "./db/client.js";
+import pool from "./db/campaigns.js";
 
 
 dotenv.config();
