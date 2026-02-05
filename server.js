@@ -25,6 +25,7 @@ import { loadFromFile } from "./knowledge/fileSource.js";
 import { mapCampaignToConversation } from "./conversation/mapper/campaignToConversation.js";
 import { createCampaign } from "./db/campaigns.js";
 import { getCampaignById } from "./db/campaigns.js";
+import { isValidTransition } from "./conversation/stateGuards.js";
 
 dotenv.config();
 
@@ -587,131 +588,153 @@ app.post("/listen", async (req, res) => {
     const raw = normalizeUserText(req.body.SpeechResult || "");
 
     /* ======================
-       PRIORITY 1: BUSY INTENT
-    ====================== */
-    if (s.state === STATES.INTRO && isBusyIntent(raw)) {
-      s.conversationFlow.push(`User: ${raw}`);
-      s.userTexts.push(raw);
-
-      const next = STATES.CALLBACK_TIME;
-      import { isValidTransition } from "./conversation/stateGuards.js";
-
-      if (!isValidTransition(s.state, next)) {
-        console.warn(`⚠️ Invalid transition ${s.state} → ${next}`);
-        next = STATES.ESCALATE;
-      }
-         
-      s.state = next;
-      s.unclearCount = 0;
-
-      const text = getResponseText(s, next);
-
-      s.agentTexts.push(text);
-      s.conversationFlow.push(`AI: ${text}`);
-
-     // const audioFile = await ensureAudio(next, text);
-
-       const audioFile = await ensureAudio(
-        s.campaignKey,
-        next,
-        text
-      );
-
-
-      return res.type("text/xml").send(`
-<Response>
-  <Play>${BASE_URL}/audio/${audioFile}</Play>
-  <Gather
-    input="speech"
-    language="gu-IN"
-    timeout="15"
-    speechTimeout="auto"
-    action="${BASE_URL}/listen"
-  />
-</Response>`);
-    }
-
-    /* ======================
-       PRIORITY 2: INVALID INPUT
-    ====================== */
-    if (!raw || raw.length < 3) {
-      s.unclearCount++;
-
-      const next = RULES.nextOnUnclear(s.unclearCount);
-      import { isValidTransition } from "./conversation/stateGuards.js";
-
-      if (!isValidTransition(s.state, next)) {
-        console.warn(`⚠️ Invalid transition ${s.state} → ${next}`);
-        next = STATES.ESCALATE;
-      }
-      
-      s.state = next;
-
-      const text = getResponseText(s, next);
-
-      s.agentTexts.push(text);
-      s.conversationFlow.push(`AI: ${text}`);
-
-      //const audioFile = await ensureAudio(next, text);
-
-       const audioFile = await ensureAudio(
-        s.campaignKey,
-        next,
-        text
-      );
-
-
-      return res.type("text/xml").send(`
-<Response>
-  <Play>${BASE_URL}/audio/${audioFile}</Play>
-  <Gather
-    input="speech"
-    language="gu-IN"
-    timeout="15"
-    speechTimeout="auto"
-    action="${BASE_URL}/listen"
-  />
-</Response>`);
-    }
-
-    /* ======================
-       NORMAL FLOW
-    ====================== */
+   PRIORITY 1: BUSY INTENT
+====================== */
+if (s.state === STATES.INTRO && isBusyIntent(raw)) {
+  if (raw) {
     s.conversationFlow.push(`User: ${raw}`);
     s.userTexts.push(raw);
+  }
 
-    let next;
-    if (s.state === STATES.INTRO) {
-      next = STATES.TASK_CHECK;
-    } else {
-      const { status, confidence } = detectTaskStatus(raw);
-      s.confidenceScore = confidence;
+  let next = STATES.CALLBACK_TIME;
 
-      if (status === "DONE") next = STATES.TASK_DONE;
-      else if (status === "PENDING") next = STATES.TASK_PENDING;
-      else next = STATES.ESCALATE;
-    }
+  if (!isValidTransition(s.state, next)) {
+    console.warn(`⚠️ Invalid transition ${s.state} → ${next}`);
+    next = STATES.ESCALATE;
+  }
 
-    import { isValidTransition } from "./conversation/stateGuards.js";
+  s.state = next;
+  s.unclearCount = 0;
 
-   if (!isValidTransition(s.state, next)) {
-     console.warn(`⚠️ Invalid transition ${s.state} → ${next}`);
-     next = STATES.ESCALATE;
-   }
-   
-   s.state = next;
+  const text = getResponseText(s, next);
 
-   const text = getResponseText(s, next);
+  s.agentTexts.push(text);
+  s.conversationFlow.push(`AI: ${text}`);
 
-    s.agentTexts.push(text);
-    s.conversationFlow.push(`AI: ${text}`);
+  const audioFile = await ensureAudio(
+    s.campaignKey,
+    next,
+    text
+  );
 
-    //const audioFile = await ensureAudio(next, text);
-     const audioFile = await ensureAudio(
-       s.campaignKey,
-       next,
-       text
-     );
+  return res.type("text/xml").send(`
+<Response>
+  <Play>${BASE_URL}/audio/${audioFile}</Play>
+  <Gather
+    input="speech"
+    language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"
+  />
+</Response>`);
+}
+
+    /* ======================
+   PRIORITY 2: INVALID INPUT
+====================== */
+if (!raw || raw.length < 3) {
+  s.unclearCount++;
+
+  let next = RULES.nextOnUnclear(s.unclearCount);
+
+  if (!isValidTransition(s.state, next)) {
+    console.warn(`⚠️ Invalid transition ${s.state} → ${next}`);
+    next = STATES.ESCALATE;
+  }
+
+  s.state = next;
+
+  let text;
+
+  // ✅ Phase 6.3: progressive retry messages
+  if (
+    RESPONSES.retry_messages &&
+    s.unclearCount <= RESPONSES.retry_messages.length
+  ) {
+    text =
+      RESPONSES.retry_messages[
+        Math.min(
+          s.unclearCount - 1,
+          RESPONSES.retry_messages.length - 1
+        )
+      ];
+  } else {
+    // fallback to normal response logic
+    text = getResponseText(s, next);
+  }
+
+  s.agentTexts.push(text);
+  s.conversationFlow.push(`AI: ${text}`);
+
+  const audioFile = await ensureAudio(
+    s.campaignKey,
+    next,
+    text
+  );
+
+  return res.type("text/xml").send(`
+<Response>
+  <Play>${BASE_URL}/audio/${audioFile}</Play>
+  <Gather
+    input="speech"
+    language="gu-IN"
+    timeout="15"
+    speechTimeout="auto"
+    action="${BASE_URL}/listen"
+  />
+</Response>`);
+}
+
+
+   /* ======================
+   NORMAL FLOW
+====================== */
+if (raw) {
+  s.conversationFlow.push(`User: ${raw}`);
+  s.userTexts.push(raw);
+}
+
+let next;
+
+// Step 1: Decide next state
+if (s.state === STATES.INTRO) {
+  next = STATES.TASK_CHECK;
+} else {
+  const { status, confidence } = detectTaskStatus(raw);
+  s.confidenceScore = confidence;
+
+  if (status === "DONE") {
+    next = STATES.TASK_DONE;
+  } else if (status === "PENDING") {
+    next = STATES.TASK_PENDING;
+  } else {
+    next = STATES.ESCALATE;
+  }
+}
+
+// Step 2: Validate transition
+if (!isValidTransition(s.state, next)) {
+  console.warn(`⚠️ Invalid transition ${s.state} → ${next}`);
+  next = STATES.ESCALATE;
+}
+
+// Step 3: Commit state
+s.state = next;
+
+// Step 4: Get response text (campaign-safe)
+const text = getResponseText(s, next);
+
+// Step 5: Log agent output
+s.agentTexts.push(text);
+s.conversationFlow.push(`AI: ${text}`);
+
+// Step 6: Generate / fetch audio
+const audioFile = await ensureAudio(
+  s.campaignKey,
+  next,
+  text
+);
 
 
     /* ======================
