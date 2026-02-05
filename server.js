@@ -801,6 +801,55 @@ const audioFile = await ensureAudio(
   }
 });
 
+
+/* ======================
+   ADMIN – CREATE CAMPAIGN (TEMP)
+====================== */
+app.post("/internal/create-campaign", async (req, res) => {
+  try {
+    const campaignJson = {
+      campaign_code: "123",
+
+      INTRO: {
+        text: "નમસ્તે, હું આપને એક મહત્વની માહિતી આપવા માટે કોલ કરી રહ્યો છું.",
+        end: false
+      },
+
+      TASK_CHECK: {
+        text: "કૃપા કરીને જણાવશો કે આપનું કામ પૂર્ણ થયું છે કે હજુ બાકી છે?",
+        end: false
+      },
+
+      TASK_DONE: {
+        text: "આભાર! આપનું કામ પૂર્ણ થયું છે.",
+        end: true
+      },
+
+      TASK_PENDING: {
+        text: "આપની સમસ્યા નોંધાઈ ગઈ છે. અમારી ટીમ જલદી સંપર્ક કરશે.",
+        end: true
+      }
+    };
+
+    const result = await pool.query(
+      `INSERT INTO campaigns (campaign_json)
+       VALUES ($1)
+       RETURNING id`,
+      [campaignJson]
+    );
+
+    res.json({
+      success: true,
+      campaignId: result.rows[0].id
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "campaign_create_failed" });
+  }
+});
+
+
+
 /* ======================
    HEALTH CHECK
 ====================== */
