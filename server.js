@@ -571,6 +571,35 @@ app.post("/answer", async (req, res) => {
   }
 });
 
+
+/* ======================
+   ANSWER (developer mode)
+====================== */
+
+app.get("/answer", async (req, res) => {
+  const fakeSid = "DEBUG123";
+
+  const s = {
+    sid: fakeSid,
+    campaignKey: "cmp_DEBUG",
+    state: STATES.INTRO,
+    dynamicResponses: RESPONSES,
+    agentTexts: [],
+    conversationFlow: []
+  };
+
+  const text = RESPONSES.intro.text;
+  const audioFile = await ensureAudio("cmp_DEBUG", STATES.INTRO, text);
+
+  res.type("text/xml").send(`
+<Response>
+  <Play>${BASE_URL}/audio/${audioFile}</Play>
+</Response>`);
+});
+
+
+
+
 /* ======================
    PARTIAL BUFFER
 ====================== */
