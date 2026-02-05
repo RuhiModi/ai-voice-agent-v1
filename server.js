@@ -604,12 +604,8 @@ app.post("/listen", async (req, res) => {
       s.state = next;
       s.unclearCount = 0;
 
-      const text =
-        s.dynamicResponses?.[next]?.text ||
-        RESPONSES[next]?.text ||
-        "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
+      const text = getResponseText(s, next);
 
-      
       s.agentTexts.push(text);
       s.conversationFlow.push(`AI: ${text}`);
 
@@ -651,11 +647,7 @@ app.post("/listen", async (req, res) => {
       
       s.state = next;
 
-      const text =
-        s.dynamicResponses?.[next]?.text ||
-        RESPONSES[next]?.text ||
-        "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
-
+      const text = getResponseText(s, next);
 
       s.agentTexts.push(text);
       s.conversationFlow.push(`AI: ${text}`);
@@ -709,11 +701,7 @@ app.post("/listen", async (req, res) => {
    
    s.state = next;
 
-   const text =
-     s.dynamicResponses?.[next]?.text ||
-     RESPONSES[next]?.text ||
-     "માફ કરશો, કૃપા કરીને ફરીથી કહો.";
-
+   const text = getResponseText(s, next);
 
     s.agentTexts.push(text);
     s.conversationFlow.push(`AI: ${text}`);
