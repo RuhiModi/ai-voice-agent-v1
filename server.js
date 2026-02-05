@@ -374,25 +374,29 @@ async function buildCampaignFromText(text) {
 }
 
 /* ======================
-   SINGLE CALL
+   SINGLE CALL (STRICT CAMPAIGN)
 ====================== */
 app.post("/call", async (req, res) => {
   try {
     const { to, campaignId } = req.body;
-    if (!to) return res.status(400).json({ error: "Phone number required" });
 
-    let campaign = null;
-    let dynamicResponses = null;
-
-    if (campaignId) {
-      const record = await getCampaignById(campaignId);
-      if (!record) {
-        return res.status(404).json({ error: "campaign_not_found" });
-      }
-      campaign = record.campaign;
-      dynamicResponses = mapCampaignToConversation(campaign);
+    if (!to) {
+      return res.status(400).json({ error: "phone_required" });
     }
-    const campaignKey = campaignId ? `cmp_${campaignId}` : "default";
+
+    if (!campaignId) {
+      return res.status(400).json({ error: "campaign_required" });
+    }
+
+    const record = await getCampaignById(campaignId);
+    if (!record) {
+      return res.status(404).json({ error: "campaign_not_found", campaignId });
+    }
+
+    const campaign = record.campaign;
+    const dynamicResponses = mapCampaignToConversation(campaign);
+    const campaignKey = `cmp_${campaignId}`;
+
     const call = await twilioClient.calls.create({
       to,
       from: process.env.TWILIO_FROM_NUMBER,
@@ -404,7 +408,7 @@ app.post("/call", async (req, res) => {
 
     sessions.set(call.sid, {
       sid: call.sid,
-      campaignKey,  
+      campaignKey,
       userPhone: to,
       startTime: Date.now(),
       endTime: null,
@@ -422,43 +426,52 @@ app.post("/call", async (req, res) => {
       result: ""
     });
 
-    res.json({ status: "calling", callSid: call.sid, hasCampaign: !!campaign });
+    return res.json({
+      status: "calling",
+      callSid: call.sid,
+      campaignId
+    });
   } catch (err) {
-    console.error("call error:", err);
+    console.error("❌ call error:", err);
     res.status(500).json({ error: "call_failed" });
   }
 });
 
+
 /* ======================
    BULK CALL
+====================== */
+/* ======================
+   BULK CALL (STRICT CAMPAIGN)
 ====================== */
 app.post("/bulk-call", async (req, res) => {
   try {
     const { phones = [], batchId, campaignId } = req.body;
 
     if (!phones.length) {
-      return res.status(400).json({ error: "No phone numbers provided" });
+      return res.status(400).json({ error: "phones_required" });
     }
+
     if (!batchId) {
-      return res.status(400).json({ error: "Batch ID required" });
+      return res.status(400).json({ error: "batchId_required" });
     }
 
-    let campaign = null;
-    let dynamicResponses = null;
-
-    if (campaignId) {
-      const record = await getCampaignById(campaignId);
-      if (!record) {
-        return res.status(404).json({ error: "campaign_not_found", campaignId });
-      }
-      campaign = record.campaign;
-      dynamicResponses = mapCampaignToConversation(campaign);
+    if (!campaignId) {
+      return res.status(400).json({ error: "campaign_required" });
     }
+
+    const record = await getCampaignById(campaignId);
+    if (!record) {
+      return res.status(404).json({ error: "campaign_not_found", campaignId });
+    }
+
+    const campaign = record.campaign;
+    const dynamicResponses = mapCampaignToConversation(campaign);
+    const campaignKey = `cmp_${campaignId}`;
 
     phones.forEach((phone, index) => {
       setTimeout(async () => {
         try {
-          const campaignKey = campaignId ? `cmp_${campaignId}` : "default";
           const call = await twilioClient.calls.create({
             to: phone,
             from: process.env.TWILIO_FROM_NUMBER,
@@ -490,25 +503,24 @@ app.post("/bulk-call", async (req, res) => {
             hasLogged: false,
             result: ""
           });
-        } catch (e) {
-          console.error("Bulk call failed:", phone, e.message);
+        } catch (err) {
+          console.error("❌ Bulk call failed:", phone, err.message);
           await updateBulkRowByPhone(phone, batchId, "Failed");
         }
       }, index * 1500);
     });
 
-    res.json({
-      status: "bulk calling started",
+    return res.json({
+      status: "bulk_call_started",
       total: phones.length,
       batchId,
-      hasCampaign: !!campaign
+      campaignId
     });
   } catch (err) {
-    console.error("Bulk call error:", err.message);
+    console.error("❌ Bulk call error:", err);
     res.status(500).json({ error: "bulk_call_failed" });
   }
 });
-
 /* ======================
    ANSWER (Twilio Webhook)
 ====================== */
