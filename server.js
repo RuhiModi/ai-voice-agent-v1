@@ -26,7 +26,8 @@ import { mapCampaignToConversation } from "./conversation/mapper/campaignToConve
 import { createCampaign } from "./db/campaigns.js";
 import { getCampaignById } from "./db/campaigns.js";
 import { isValidTransition } from "./conversation/stateGuards.js";
-import { pool } from "./db/client.js";
+import { query } from "./db/client.js";
+
 
 
 dotenv.config();
@@ -829,7 +830,7 @@ app.post("/internal/create-campaign", async (req, res) => {
       }
     };
 
-    const result = await pool.query(
+    const result = await query(
       `
       INSERT INTO campaigns (
         source_type,
