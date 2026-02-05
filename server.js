@@ -381,9 +381,10 @@ async function buildCampaignFromText(text) {
 ====================== */
 app.post("/call", async (req, res) => {
   try {
-    const { to, campaignId } = req.body;
+    const phone = req.body.phone || req.body.to;
+    const { campaignId } = req.body;
 
-    if (!to) {
+    if (!phone) {
       return res.status(400).json({ error: "phone_required" });
     }
 
@@ -401,7 +402,7 @@ app.post("/call", async (req, res) => {
     const campaignKey = `cmp_${campaignId}`;
 
     const call = await twilioClient.calls.create({
-      to,
+      to: phone, // ✅ ALWAYS phone
       from: process.env.TWILIO_FROM_NUMBER,
       url: `${BASE_URL}/answer`,
       statusCallback: `${BASE_URL}/call-status`,
@@ -412,7 +413,7 @@ app.post("/call", async (req, res) => {
     sessions.set(call.sid, {
       sid: call.sid,
       campaignKey,
-      userPhone: to,
+      userPhone: phone, // ✅ ALWAYS phone
       startTime: Date.now(),
       endTime: null,
       callbackTime: null,
@@ -439,6 +440,7 @@ app.post("/call", async (req, res) => {
     res.status(500).json({ error: "call_failed" });
   }
 });
+
 
 /* ======================
    BULK CALL (STRICT CAMPAIGN)
@@ -520,6 +522,7 @@ app.post("/bulk-call", async (req, res) => {
     res.status(500).json({ error: "bulk_call_failed" });
   }
 });
+
 /* ======================
    ANSWER (Twilio Webhook)
 ====================== */
