@@ -437,10 +437,6 @@ app.post("/call", async (req, res) => {
   }
 });
 
-
-/* ======================
-   BULK CALL
-====================== */
 /* ======================
    BULK CALL (STRICT CAMPAIGN)
 ====================== */
@@ -832,10 +828,24 @@ app.post("/internal/create-campaign", async (req, res) => {
     };
 
     const result = await pool.query(
-      `INSERT INTO campaigns (campaign_json)
-       VALUES ($1)
-       RETURNING id`,
-      [campaignJson]
+      `
+      INSERT INTO campaigns (
+        source_type,
+        source_payload,
+        campaign_json,
+        language,
+        goal
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+      `,
+      [
+        "manual",                // source_type
+        {},                      // source_payload (empty JSON)
+        campaignJson,            // campaign_json
+        "gu",                    // language
+        "constituent_followup"   // goal
+      ]
     );
 
     res.json({
@@ -843,11 +853,10 @@ app.post("/internal/create-campaign", async (req, res) => {
       campaignId: result.rows[0].id
     });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Campaign create failed:", err);
     res.status(500).json({ error: "campaign_create_failed" });
   }
 });
-
 
 
 /* ======================
