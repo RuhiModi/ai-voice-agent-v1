@@ -594,6 +594,13 @@ app.post("/listen", async (req, res) => {
       s.userTexts.push(raw);
 
       const next = STATES.CALLBACK_TIME;
+      import { isValidTransition } from "./conversation/stateGuards.js";
+
+      if (!isValidTransition(s.state, next)) {
+        console.warn(`⚠️ Invalid transition ${s.state} → ${next}`);
+        next = STATES.ESCALATE;
+      }
+         
       s.state = next;
       s.unclearCount = 0;
 
@@ -635,6 +642,13 @@ app.post("/listen", async (req, res) => {
       s.unclearCount++;
 
       const next = RULES.nextOnUnclear(s.unclearCount);
+      import { isValidTransition } from "./conversation/stateGuards.js";
+
+      if (!isValidTransition(s.state, next)) {
+        console.warn(`⚠️ Invalid transition ${s.state} → ${next}`);
+        next = STATES.ESCALATE;
+      }
+      
       s.state = next;
 
       const text =
@@ -686,7 +700,14 @@ app.post("/listen", async (req, res) => {
       else next = STATES.ESCALATE;
     }
 
-    s.state = next;
+    import { isValidTransition } from "./conversation/stateGuards.js";
+
+   if (!isValidTransition(s.state, next)) {
+     console.warn(`⚠️ Invalid transition ${s.state} → ${next}`);
+     next = STATES.ESCALATE;
+   }
+   
+   s.state = next;
 
    const text =
      s.dynamicResponses?.[next]?.text ||
