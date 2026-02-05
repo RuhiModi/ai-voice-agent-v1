@@ -1,33 +1,18 @@
-import { STATES } from "../states.js";
+export function mapCampaignToConversation(campaignJson) {
+  const mapped = {};
 
-/**
- * Converts campaign → conversation responses
- * Safe, predictable, voice-ready
- */
-export function mapCampaignToConversation(campaign) {
-  return {
-    [STATES.INTRO]: {
-      text: campaign.suggestedOpening,
-      next: STATES.TASK_CHECK
-    },
+  for (const [key, value] of Object.entries(campaignJson)) {
+    // Skip metadata
+    if (key === "campaign_code") continue;
 
-    [STATES.TASK_CHECK]: {
-      text: "આ માહિતી તમને સમજાઈ ગઈ છે કે નહીં?",
-      next: {
-        DONE: STATES.TASK_DONE,
-        PENDING: STATES.TASK_PENDING,
-        UNKNOWN: STATES.RETRY_TASK_CHECK
-      }
-    },
+    // 🔑 Normalize DB keys → match STATES
+    const normalizedKey = key.toLowerCase();
 
-    [STATES.TASK_DONE]: {
-      text: campaign.suggestedClosing,
-      end: true
-    },
+    mapped[normalizedKey] = {
+      text: value?.text || "",
+      end: Boolean(value?.end)
+    };
+  }
 
-    [STATES.TASK_PENDING]: {
-      text: "જો તમને વધુ માહિતી જોઈએ તો કૃપા કરીને કહો.",
-      next: STATES.PROBLEM_RECORDED
-    }
-  };
+  return mapped;
 }
